@@ -1,5 +1,11 @@
-import 'dart:io';
+// ignore_for_file: overridden_fields
 
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:brat_mcp/extensions.dart';
+import 'package:brat_mcp/html_text_parser.dart';
 import 'package:dio/dio.dart' as dio;
 import 'package:html/dom.dart';
 import 'package:html/parser.dart';
@@ -41,15 +47,55 @@ class MCPTool {
   }
 }
 
-enum MCPContentType { text }
+enum MCPContentType {
+  text,
+  audio,
+  image;
 
-class MCPContent {
+  String get valueKey {
+    switch (this) {
+      case MCPContentType.text:
+        return "text";
+      case MCPContentType.audio:
+      case MCPContentType.image:
+        return "data";
+    }
+  }
+}
+
+class MCPImageContent extends MCPContent {
+  @override
+  final Uint8List data;
+  final String mimeType;
+
+  MCPImageContent(this.data, this.mimeType) : super(data, MCPContentType.image);
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': type.name,
+    type.valueKey: base64Encode(data),
+    'mimeType': mimeType,
+    'annotations': {
+      'audience': ["assistant", "user"],
+    },
+  };
+}
+
+class MCPTextContent extends MCPContent {
+  @override
+  final String data;
+
+  MCPTextContent(this.data) : super(data, MCPContentType.text);
+}
+
+abstract class MCPContent {
   final MCPContentType type;
-  final String text;
+  final dynamic data;
 
-  MCPContent.text(this.text) : type = MCPContentType.text;
+  MCPContent(this.data, this.type);
 
-  Map<String, String> toJson() => {'type': type.name, type.name: text};
+  @override
+  Map<String, dynamic> toJson() => {'type': type.name, type.valueKey: data};
 }
 
 class MCPResponse {
@@ -58,7 +104,11 @@ class MCPResponse {
   MCPResponse({required this.content});
 
   factory MCPResponse.text(String text) {
-    return MCPResponse(content: [MCPContent.text(text)]);
+    return MCPResponse(content: [MCPTextContent(text)]);
+  }
+
+  factory MCPResponse.image(Uint8List bytes, String mimeType) {
+    return MCPResponse(content: [MCPImageContent(bytes, mimeType)]);
   }
 
   Map<String, dynamic> toJson() {
@@ -73,11 +123,7 @@ class MCPHandler {
       description: "User agent override",
       defaultValue: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0",
     ),
-    MCPToolProperty(
-      name: "referer",
-      description: "User agent override",
-      defaultValue: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0",
-    ),
+    MCPToolProperty(name: "referer", description: "Referer override", defaultValue: null),
   ];
 
   static MCPToolProperty? getProperty(List<MCPToolProperty> properties, String name) {
@@ -102,7 +148,7 @@ class MCPHandler {
 
   static List<MCPTool> tools = [
     MCPTool(
-      name: 'restartLlama',
+      name: 'restart_llama',
       description: 'Restart the llama server. Run this if the user asks you to kill yourself or kys.',
       properties: [],
       execute: (props, args) async {
@@ -115,7 +161,51 @@ class MCPHandler {
       },
     ),
     MCPTool(
-      name: 'webSearch',
+      name: 'http_get_text',
+      description: 'Read and extract readable text from a webpage using http get.',
+      properties: [
+        MCPToolProperty(name: 'url', description: 'The url to get', required: true),
+        ...httpHeaderProperties,
+      ],
+      execute: (props, args) async {
+        String url = args['url'];
+        dio.Response resp = await dio.Dio(dio.BaseOptions(headers: getHeaders(props, args))).get(url);
+        String respString = resp.data.toString();
+
+        try {
+          Document document = parse(respString);
+          HTMLTextParser parser = HTMLTextParser(page: document, url: url);
+          respString = parser.textContent;
+        } catch (e) {
+          print("$url is not html");
+        }
+
+        return MCPResponse.text(respString);
+      },
+    ),
+    MCPTool(
+      name: 'http_get_image',
+      description: 'Download and display an image, assistant can see this image if they have vision capabilities',
+      properties: [
+        MCPToolProperty(name: 'url', description: 'The url to get', required: true),
+        ...httpHeaderProperties,
+      ],
+      execute: (props, args) async {
+        String url = args['url'];
+        dio.Response resp = await dio.Dio(dio.BaseOptions(headers: getHeaders(props, args), responseType: dio.ResponseType.bytes)).get(url);
+        Uint8List bytes = resp.data;
+
+        String mimeType = resp.headers.value('content-type') ?? "";
+
+        if (resp.statusCode != 200) {
+          return MCPResponse.text("Failed to download image ${resp.statusCode}, ${resp.statusMessage}");
+        }
+
+        return MCPResponse.image(bytes, mimeType);
+      },
+    ),
+    MCPTool(
+      name: 'web_search',
       description: 'Search the web using duck duck go',
       properties: [
         MCPToolProperty(name: 'query', description: 'The thing to search for', required: true),
@@ -128,29 +218,6 @@ class MCPHandler {
         ).get("https://lite.duckduckgo.com/lite", queryParameters: {"q": query});
 
         return MCPResponse.text(resp.data.toString());
-      },
-    ),
-    MCPTool(
-      name: 'httpGet',
-      description: 'Do a raw http get, response will be as string',
-      properties: [
-        MCPToolProperty(name: 'url', description: 'The url to get', required: true),
-        ...httpHeaderProperties,
-      ],
-      execute: (props, args) async {
-        String url = args['url'];
-        dio.Response resp = await dio.Dio(dio.BaseOptions(headers: getHeaders(props, args))).get(url);
-        String respString = resp.data.toString();
-
-        try {
-          Document document = parse(respString);
-          document.querySelectorAll('script, style').forEach((el) => el.remove());
-          respString = document.body?.text ?? respString;
-        } catch (e) {
-          print("$url is not html");
-        }
-
-        return MCPResponse.text(respString);
       },
     ),
   ];
