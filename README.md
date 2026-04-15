@@ -16,6 +16,7 @@ dart run bin/mcp_server.dart
 | `--port` | `-p` | `6969` | Port to listen on |
 | `--ip` | `-i` | `0.0.0.0` | IP to bind to |
 | `--name` | `-n` | `💢 Brat MCP` | Server name shown on startup |
+| `--chrome` | `-c` | | Override for google chrome path, some paths are checked automatically |
 | `--help` | `-h` | | Show usage info |
 
 Example:

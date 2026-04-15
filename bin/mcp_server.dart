@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:args/args.dart';
-import 'package:brat_mcp/mcp_handler.dart';
+import 'package:brat_mcp/mcp/mcp_handler.dart';
+import 'package:brat_mcp/utils.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
@@ -11,6 +12,7 @@ void main(List<String> arguments) async {
     ..addOption('port', abbr: 'p', defaultsTo: '6969', help: 'The port to listen on')
     ..addOption('ip', abbr: 'i', defaultsTo: '0.0.0.0', help: 'The ip to bind to')
     ..addOption('name', abbr: 'n', defaultsTo: '💢 Brat MCP', help: 'The server name')
+    ..addOption('chrome', abbr: 'c', help: 'Chrome path override for pupeteer if yours isnt detected')
     ..addFlag('help', abbr: 'h', negatable: false, help: 'Show usage information');
 
   ArgResults argResults;
@@ -30,8 +32,12 @@ void main(List<String> arguments) async {
   final int port = int.parse(argResults['port']);
   final String host = argResults['ip'];
   final String name = argResults['name'];
+  final String? chromePath = argResults['chrome'];
 
   final router = Router();
+  final MCPHandler mcpHandler = MCPHandler();
+  await mcpHandler.initTools(pathOverrides: {'chrome': chromePath});
+
   router.get('/mcp', (Request request) {
     HttpConnectionInfo? connectionInfo = request.context['shelf.io.connection_info'] as HttpConnectionInfo?;
     String ip = connectionInfo?.remoteAddress.address ?? 'Unknown Ip';
@@ -72,7 +78,7 @@ void main(List<String> arguments) async {
       return _jsonResponse({
         'jsonrpc': '2.0',
         'id': id,
-        'result': {'tools': MCPHandler.tools},
+        'result': {'tools': mcpHandler.tools},
       });
     }
 
@@ -81,7 +87,7 @@ void main(List<String> arguments) async {
       final toolArgs = (params['arguments'] ?? {}) as Map<String, dynamic>;
       print('called tool: $toolName, $params');
       try {
-        final result = await MCPHandler.handleToolCall(toolName, toolArgs);
+        final result = await mcpHandler.handleToolCall(toolName, toolArgs);
         return _jsonResponse({'jsonrpc': '2.0', 'id': id, 'result': result});
       } catch (e) {
         return _jsonResponse({

@@ -75,3 +75,9 @@ extension NodeExtensions on Element {
 
   bool get addNewLine => ['p', 'div', 'section', 'article', 'br', 'li', 'ul', 'ol', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].contains(localName);
 }
+
+extension DateTimeExtensions on DateTime {
+  String get dateString {
+    return "$day/$month/$year - ${hour.toString().padLeft(2)}:${minute.toString().padLeft(2)}";
+  }
+}

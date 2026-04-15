@@ -43,6 +43,6 @@ class HTMLTextParser {
     _walkNode(page);
     String content = buffer.toString();
 
-    return content.replaceAll(RegExp(r'\s+\n'), '\n').replaceAll(RegExp(r'\n{2,}'), '\n').replaceAll(RegExp(r'\s{2,}'), ' ');
+    return content.replaceAll(RegExp(r'\s+\n'), '\n').replaceAll(RegExp(r'\n{2,}'), '\n').replaceAll(RegExp(r'\s{2,}'), ' ').replaceAll("<bos>", "");
   }
 }
