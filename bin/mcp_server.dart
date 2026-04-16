@@ -2,12 +2,21 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:args/args.dart';
 import 'package:brat_mcp/mcp/mcp_handler.dart';
+import 'package:brat_mcp/puppeteer.dart';
 import 'package:brat_mcp/utils.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
 
+Future<void> onKill() async {
+  await PuppeteerSessionHandler.instance.closeAll();
+  exit(0);
+}
+
 void main(List<String> arguments) async {
+  ProcessSignal.sigint.watch().listen((_) => onKill());
+  ProcessSignal.sigterm.watch().listen((_) => onKill());
+
   final parser = ArgParser()
     ..addOption('port', abbr: 'p', defaultsTo: '6969', help: 'The port to listen on')
     ..addOption('ip', abbr: 'i', defaultsTo: '0.0.0.0', help: 'The ip to bind to')

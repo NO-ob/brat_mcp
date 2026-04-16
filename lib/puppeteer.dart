@@ -4,6 +4,70 @@ import 'package:brat_mcp/mcp/mcp_tools.dart';
 import 'package:brat_mcp/utils.dart';
 import 'package:puppeteer/puppeteer.dart';
 
+class ManagedPuppeteerSession {
+  final String id;
+  final PuppeteerSession session;
+  late Timer expiryTimer;
+  final Duration duration;
+  void Function(String id) onExpiry;
+
+  ManagedPuppeteerSession({required this.id, required this.session, required this.onExpiry, required this.duration}) {
+    resetTimer();
+  }
+
+  void resetTimer() {
+    expiryTimer = Timer(duration, () {
+      onExpiry.call(id);
+    });
+  }
+
+  Future<void> closeSession() async {
+    return session.browser?.close();
+  }
+}
+
+class PuppeteerSessionHandler {
+  PuppeteerSessionHandler._();
+  static final PuppeteerSessionHandler instance = PuppeteerSessionHandler._();
+
+  final Map<String, ManagedPuppeteerSession> sessions = {};
+  int counter = 0;
+
+  Future<String> open({required PuppeteerSession session, Duration expiry = const Duration(minutes: 10)}) async {
+    String id = "session_${++counter}";
+    sessions[id] = ManagedPuppeteerSession(
+      id: id,
+      session: session,
+      duration: expiry,
+      onExpiry: (id) async {
+        closeSession(id: id, isExpired: true);
+      },
+    );
+    print("created browser session: $id");
+    return id;
+  }
+
+  ManagedPuppeteerSession? get(String id) {
+    ManagedPuppeteerSession? session = sessions[id];
+    session?.resetTimer();
+    return session;
+  }
+
+  Future<void> closeSession({required String id, bool isExpired = false}) async {
+    ManagedPuppeteerSession? session = sessions.remove(id);
+    await session?.closeSession();
+    print("$id closed, reason: ${isExpired ? "expired" : "closed"}");
+  }
+
+  Future<void> closeAll() async {
+    for (ManagedPuppeteerSession session in sessions.values) {
+      await session.closeSession();
+    }
+    sessions.clear();
+    print("all sessions closed");
+  }
+}
+
 List<MCPToolProperty> puppeteerBaseProperties = [
   MCPToolPropertyString(name: 'url', description: 'The URL to load', required: true),
   MCPToolPropertyString(
@@ -32,9 +96,7 @@ List<MCPToolProperty> puppeteerBaseProperties = [
 
 class PuppeteerSession {
   String executablePath;
-  String url;
   Until navigationWait;
-  String? waitForSelector;
   int waitMs;
   int viewportWidth;
   bool headless;
@@ -46,9 +108,7 @@ class PuppeteerSession {
 
   PuppeteerSession({
     required this.executablePath,
-    required this.url,
     required this.navigationWait,
-    this.waitForSelector,
     this.waitMs = 0,
     this.viewportWidth = 1280,
     this.headless = true,
@@ -58,7 +118,6 @@ class PuppeteerSession {
 
   factory PuppeteerSession.fromArgs(String executablePath, List<MCPToolProperty> props, Map<String, dynamic> args) {
     String waitUntil = args['wait_until'] ?? getProperty(props, 'wait_until')?.defaultValue ?? 'networkalmostidle';
-    String? waitForSelector = args['wait_for_selector'] ?? getProperty(props, 'wait_for_selector')?.defaultValue;
     int waitMs = Utils().getInt(key: 'wait_ms', map: args, def: getProperty(props, 'wait_ms')?.defaultValue ?? 0);
     int viewportWidth = Utils().getInt(key: 'viewport_width', map: args, def: getProperty(props, 'viewport_width')?.defaultValue ?? 1280);
     String? userAgent = args['userAgent'] ?? getProperty(props, 'userAgent')?.defaultValue;
@@ -85,9 +144,7 @@ class PuppeteerSession {
 
     return PuppeteerSession(
       executablePath: executablePath,
-      url: args['url'],
       navigationWait: navigationWait,
-      waitForSelector: waitForSelector,
       waitMs: waitMs,
       viewportWidth: viewportWidth,
       headless: true,
@@ -96,7 +153,7 @@ class PuppeteerSession {
     );
   }
 
-  Future<Page> load() async {
+  Future<void> loadBrowser() async {
     browser = await puppeteer.launch(
       headless: headless,
       executablePath: executablePath,
@@ -104,27 +161,30 @@ class PuppeteerSession {
     );
 
     Page loadedPage = await browser!.newPage();
-    page = loadedPage;
 
     await loadedPage.setViewport(DeviceViewport(width: viewportWidth, height: 900));
 
     if (userAgent != null && userAgent!.isNotEmpty) {
-      await loadedPage.setUserAgent(userAgent!);
+      await page!.setUserAgent(userAgent!);
     }
 
     if (referer != null && referer!.isNotEmpty) {
-      await loadedPage.setExtraHTTPHeaders({'Referer': referer!});
+      await page!.setExtraHTTPHeaders({'Referer': referer!});
     }
 
+    page = loadedPage;
+  }
+
+  Future<Page> navigate({String? waitForSelector, required String url}) async {
     try {
-      await loadedPage.goto(url, wait: navigationWait);
+      await page!.goto(url, wait: navigationWait);
     } catch (e) {
       print('Navigation event never fired for $url, continuing anyway: $e');
     }
 
-    if (waitForSelector != null && waitForSelector!.isNotEmpty) {
+    if (waitForSelector != null && waitForSelector.isNotEmpty) {
       try {
-        await loadedPage.waitForSelector(waitForSelector!, timeout: Duration(seconds: 15));
+        await page!.waitForSelector(waitForSelector, timeout: Duration(seconds: 15));
       } catch (e) {
         print('Selector "$waitForSelector" never appeared, continuing anyway: $e');
       }
@@ -134,7 +194,7 @@ class PuppeteerSession {
       await Future.delayed(Duration(milliseconds: waitMs));
     }
 
-    return loadedPage;
+    return page!;
   }
 
   Future<void> close() async {

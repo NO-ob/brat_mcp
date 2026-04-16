@@ -45,19 +45,6 @@ MCPToolProperty? getProperty(List<MCPToolProperty> properties, String name) {
 
 List<MCPTool> defaultTools = [
   MCPTool(
-    name: 'restart_llama',
-    description: 'Restart the llama server. Run this if the user asks you to kill yourself or kys.',
-    properties: [],
-    execute: (props, args) async {
-      Future.delayed(Duration(seconds: 10)).then((_) async {
-        await Process.run('pkill', ['-9', 'llama-server']);
-        print("Llama server killed");
-        Process.run('llama', []);
-      });
-      return MCPResponse.text("Server will restart in 10 seconds. Please alert the user that you have killed yourself.");
-    },
-  ),
-  MCPTool(
     name: 'sleep_timer',
     description:
         'Sleep for a period of time, useful to wait before continuing output or before anotehr tool call.'
@@ -83,7 +70,7 @@ List<MCPTool> defaultTools = [
   ),
   MCPTool(
     name: 'http_get_text',
-    description: 'Read and extract readable text from a webpage using http get.',
+    description: 'Read and extract readable text from a webpage using http get. Prefer over puppeteer_get_text',
     properties: [
       MCPToolPropertyString(name: 'url', description: 'The url to get', required: true),
       ...httpHeaderProperties,
@@ -165,6 +152,27 @@ List<MCPTool> defaultTools = [
 
 List<ConditionalMCPTool> conditionalTools = [
   ConditionalMCPTool(
+    binaries: ['llama'],
+    key: 'llama',
+    builder: (String path) {
+      return [
+        MCPTool(
+          name: 'restart_llama',
+          description: 'Restart the llama server. Run this if the user asks you to kill yourself or kys.',
+          properties: [],
+          execute: (props, args) async {
+            Future.delayed(Duration(seconds: 10)).then((_) async {
+              await Process.run('pkill', ['-9', 'llama-server']);
+              print("Llama server killed");
+              Process.run(path, []);
+            });
+            return MCPResponse.text("Server will restart in 10 seconds. Please alert the user that you have killed yourself.");
+          },
+        ),
+      ];
+    },
+  ),
+  ConditionalMCPTool(
     binaries: ['google-chrome-stable', 'google-chrome', 'chrome', 'chromium'],
     key: "chrome",
     builder: (String path) {
@@ -172,22 +180,26 @@ List<ConditionalMCPTool> conditionalTools = [
         MCPTool(
           name: 'puppeteer_get_text',
           description:
-              'Read and extract readable text from a webpage using a headless Chromium browser. '
+              'Get text from a webpage using a headless browser. '
               'Try http_get_text first as its faster, should work for JS-heavy or dynamic pages.',
           properties: puppeteerBaseProperties,
           execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
             PuppeteerSession session = PuppeteerSession.fromArgs(path, props, args);
+
             try {
-              Page page = await session.load();
+              await session.loadBrowser();
+              String url = args['url'];
+              Page page = await session.navigate(url: url, waitForSelector: args['wait_for_selector'] ?? getProperty(props, 'wait_for_selector')?.defaultValue);
+
               String html = await page.content ?? '';
 
               String result = html;
               try {
                 Document document = parse(html);
-                HTMLTextParser parser = HTMLTextParser(page: document, url: session.url);
+                HTMLTextParser parser = HTMLTextParser(page: document, url: url);
                 result = parser.textContent;
               } catch (e) {
-                print('${session.url} HTML parsing failed, returning raw HTML: $e');
+                print('$url HTML parsing failed, returning raw HTML: $e');
               }
 
               return MCPResponse.text(result);
@@ -209,7 +221,10 @@ List<ConditionalMCPTool> conditionalTools = [
           execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
             PuppeteerSession session = PuppeteerSession.fromArgs(path, props, args);
             try {
-              Page page = await session.load();
+              await session.loadBrowser();
+              String url = args['url'];
+              Page page = await session.navigate(url: url, waitForSelector: args['wait_for_selector'] ?? getProperty(props, 'wait_for_selector')?.defaultValue);
+
               Uint8List screenshot = await page.screenshot(fullPage: true, format: ScreenshotFormat.png);
               return MCPResponse.image(screenshot, 'image/png');
             } catch (e) {
@@ -217,6 +232,135 @@ List<ConditionalMCPTool> conditionalTools = [
               return MCPResponse.text('puppeteer_screenshot failed: $e$extra');
             } finally {
               await session.close();
+            }
+          },
+        ),
+        MCPTool(
+          name: 'puppeteer_session_create',
+          description:
+              'Create a web browser session that can be controlleed through multiple steps.'
+              'Use this if you want to load a page and then interact with it.',
+          properties: puppeteerBaseProperties,
+          execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
+            try {
+              PuppeteerSession session = PuppeteerSession.fromArgs(path, props, args);
+              String sessionId = await PuppeteerSessionHandler.instance.open(session: session);
+              await session.loadBrowser();
+              String url = args['url'];
+              await session.navigate(url: url, waitForSelector: args['wait_for_selector'] ?? getProperty(props, 'wait_for_selector')?.defaultValue);
+
+              return MCPResponse.text('session_id: $sessionId');
+            } catch (e) {
+              String extra = e is TimeoutException ? ' Try a different wait_until value.' : '';
+              return MCPResponse.text('puppeteer_create_session failed: $e$extra');
+            }
+          },
+        ),
+        MCPTool(
+          name: 'puppeteer_session_screenshot',
+          description:
+              'Take a full-page screenshot of a webpage of a currently running browser session. '
+              'Captures the entire scrollable page, not just the visible viewport. '
+              'Returns an image the assistant can see.',
+          properties: [MCPToolPropertyString(name: 'session_id', description: 'The session id of the browser session', required: true)],
+          execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
+            String? sessionId = args["session_id"];
+
+            if (sessionId == null) {
+              return MCPResponse.text('session id is required');
+            }
+
+            try {
+              ManagedPuppeteerSession? managedSession = PuppeteerSessionHandler.instance.get(sessionId);
+              if (managedSession == null) {
+                return MCPResponse.text('No session found for $sessionId');
+              }
+
+              Page? page = managedSession.session.page;
+
+              if (page == null) {
+                return MCPResponse.text('No loaded page please navigate to a page');
+              }
+
+              Uint8List screenshot = await page.screenshot(fullPage: true, format: ScreenshotFormat.png);
+              return MCPResponse.image(screenshot, 'image/png');
+            } catch (e) {
+              String extra = e is TimeoutException ? ' Try a different wait_until value.' : '';
+              return MCPResponse.text('puppeteer_screenshot_session failed: $e$extra');
+            }
+          },
+        ),
+        MCPTool(
+          name: 'puppeteer_session_navigate',
+          description: 'Navigate to a url in the current puppeteer session.',
+          properties: [
+            MCPToolPropertyString(name: 'session_id', description: 'The session id of the browser session', required: true),
+            ...puppeteerBaseProperties,
+          ],
+          execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
+            String? sessionId = args["session_id"];
+
+            if (sessionId == null) {
+              return MCPResponse.text('session id is required');
+            }
+
+            try {
+              ManagedPuppeteerSession? managedSession = PuppeteerSessionHandler.instance.get(sessionId);
+              if (managedSession == null) {
+                return MCPResponse.text('No session found for $sessionId');
+              }
+
+              String url = args['url'];
+              await managedSession.session.navigate(
+                url: url,
+                waitForSelector: args['wait_for_selector'] ?? getProperty(props, 'wait_for_selector')?.defaultValue,
+              );
+
+              return MCPResponse.text("Page loaded");
+            } catch (e) {
+              String extra = e is TimeoutException ? ' Try a different wait_until value.' : '';
+              return MCPResponse.text('puppeteer_navigate_session failed: $e$extra');
+            }
+          },
+        ),
+        MCPTool(
+          name: 'puppeteer_session_get_page_text',
+          description: 'Get text from the currently open webpage of a puppeteer session. ',
+          properties: [MCPToolPropertyString(name: 'session_id', description: 'The session id of the browser session', required: true)],
+          execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
+            String? sessionId = args["session_id"];
+
+            if (sessionId == null) {
+              return MCPResponse.text('session id is required');
+            }
+
+            try {
+              ManagedPuppeteerSession? managedSession = PuppeteerSessionHandler.instance.get(sessionId);
+              if (managedSession == null) {
+                return MCPResponse.text('No session found for $sessionId');
+              }
+
+              Page? page = managedSession.session.page;
+
+              if (page == null) {
+                return MCPResponse.text('No loaded page please navigate to a page');
+              }
+
+              String html = await page.content ?? '';
+
+              String result = html;
+              try {
+                Document document = parse(html);
+                HTMLTextParser parser = HTMLTextParser(page: document, url: page.url ?? '');
+                result = parser.textContent;
+              } catch (e) {
+                print('$page.url HTML parsing failed, returning raw HTML: $e');
+              }
+
+              return MCPResponse.text(result);
+            } catch (e) {
+              String extra = e is TimeoutException ? ' Try a different wait_until value.' : '';
+              return MCPResponse.text('puppeteer_session_get_page_text failed: $e$extra');
             }
           },
         ),
