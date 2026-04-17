@@ -174,6 +174,7 @@ List<ConditionalMCPTool> conditionalTools = [
   ),
   ConditionalMCPTool(
     binaries: ['google-chrome-stable', 'google-chrome', 'chrome', 'chromium'],
+    winBinaries: ['C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe','C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe', 'C:\\Program Files\\Chromium\\Application\\chrome.exe', 'C:\\Program Files (x86)\\Chromium\\Application\\chrome.exe'],
     key: "chrome",
     builder: (String path) {
       return [
@@ -181,7 +182,7 @@ List<ConditionalMCPTool> conditionalTools = [
           name: 'puppeteer_get_text',
           description:
               'Get text from a webpage using a headless browser. '
-              'Try http_get_text first as its faster, should work for JS-heavy or dynamic pages.',
+              'Prefer http_get_text first as its faster.',
           properties: puppeteerBaseProperties,
           execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
             PuppeteerSession session = PuppeteerSession.fromArgs(path, props, args);
@@ -239,7 +240,7 @@ List<ConditionalMCPTool> conditionalTools = [
           name: 'puppeteer_session_create',
           description:
               'Create a web browser session that can be controlleed through multiple steps.'
-              'Use this if you want to load a page and then interact with it.',
+              'Use this if you want to load a page and then interact with it or navigate multiple pages',
           properties: puppeteerBaseProperties,
           execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
             try {

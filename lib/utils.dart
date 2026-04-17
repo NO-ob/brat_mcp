@@ -1,16 +1,12 @@
 import 'dart:io';
 
 class Utils {
-  Future<bool> isInstalled(String command) async {
-    try {
-      ProcessResult result = await Process.run('which', [command]);
-      return result.exitCode == 0;
-    } catch (_) {
-      return false;
-    }
-  }
-
   Future<String?> whichPath(String command) async {
+
+    if(Platform.isWindows){
+      return whichPathWindows(command);
+    }
+
     try {
       ProcessResult result = await Process.run('which', [command]);
       if (result.exitCode == 0) {
@@ -21,6 +17,17 @@ class Utils {
       return null;
     }
   }
+
+   Future<String?> whichPathWindows(String command) async {
+    try {
+      return File(command).existsSync() ? command :  null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  
+
 
   bool getBool({required String key, required Map<String, dynamic> map, required bool def}) {
     var value = map[key];
