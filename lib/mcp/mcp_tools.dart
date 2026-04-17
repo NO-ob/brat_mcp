@@ -206,6 +206,7 @@ List<ConditionalMCPTool> conditionalTools = [
   ),
   ConditionalMCPTool(
     binaries: ['google-chrome-stable', 'google-chrome', 'chrome', 'chromium'],
+    winBinaries: ['C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe','C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe', 'C:\\Program Files\\Chromium\\Application\\chrome.exe', 'C:\\Program Files (x86)\\Chromium\\Application\\chrome.exe'],
     key: "chrome",
     builder: (String path) {
       return [
