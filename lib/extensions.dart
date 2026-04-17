@@ -2,7 +2,24 @@ import 'package:html/dom.dart';
 
 extension NodeExtensions on Element {
   String? textContent(String url) {
-    // 4chan iamges
+    if (className == 'thread' && id.startsWith("thread-")) {
+      String subjectString = "";
+      String threadLink = "";
+      String messageString = "";
+      Element? link = querySelector('a');
+      if (link != null) {
+        threadLink = link.attributes['href'] ?? '';
+      }
+
+      Element? teaser = querySelector(".teaser");
+
+      if (teaser != null) {
+        subjectString = teaser.querySelector('b')?.text ?? '';
+        messageString = teaser.text.replaceAll(subjectString, "");
+      }
+
+      return "Subject $subjectString \n Link $threadLink\n Post $messageString\n=\n";
+    }
 
     if (className.startsWith('postContainer ')) {
       String imageString = "";
@@ -59,6 +76,10 @@ extension NodeExtensions on Element {
 
   bool get walkable {
     if (['script', 'style'].contains(localName)) {
+      return false;
+    }
+
+    if (className == 'thread' && id.startsWith("thread-")) {
       return false;
     }
 

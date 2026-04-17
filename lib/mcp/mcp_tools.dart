@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:brat_mcp/dice.dart';
 import 'package:brat_mcp/extensions.dart';
 import 'package:brat_mcp/html_text_parser.dart';
 import 'package:brat_mcp/mcp/mcp_response.dart';
@@ -44,6 +45,37 @@ MCPToolProperty? getProperty(List<MCPToolProperty> properties, String name) {
 }
 
 List<MCPTool> defaultTools = [
+  MCPTool(
+    name: 'roll_dice',
+    description:
+        'Roll dice using dice notation.\n'
+        'Maths Ops: ${MathsOperation.instructions}\n'
+        'Dice Ops: ${DiceOperation.instructions}.',
+    properties: [MCPToolPropertyString(name: "roll", description: "Dice roll notiation string", required: true)],
+    execute: (props, args) async {
+      String roll = args['roll'];
+
+      List<List<int>> parsed = parseDice(roll);
+
+      return MCPResponse.text('$parsed');
+    },
+  ),
+  MCPTool(
+    name: 'random_number',
+    description: 'Get a random, number, supports min and max',
+    properties: [
+      MCPToolPropertyInt(name: "max", description: "Max number"),
+      MCPToolPropertyInt(name: "min", description: "Min number"),
+    ],
+    execute: (props, args) async {
+      int max = (Utils().getInt(key: "max", map: args, def: 10000000)).clamp(0, 4294967296);
+      int min = Utils().getInt(key: "min", map: args, def: 0).clamp(0, max);
+
+      int rand = random.nextInt(max - min) + min;
+
+      return MCPResponse.text('$rand');
+    },
+  ),
   MCPTool(
     name: 'sleep_timer',
     description:
@@ -181,7 +213,7 @@ List<ConditionalMCPTool> conditionalTools = [
           name: 'puppeteer_get_text',
           description:
               'Get text from a webpage using a headless browser. '
-              'Try http_get_text first as its faster, should work for JS-heavy or dynamic pages.',
+              'Prefer http_get_text first as its faster.',
           properties: puppeteerBaseProperties,
           execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
             PuppeteerSession session = PuppeteerSession.fromArgs(path, props, args);
@@ -239,7 +271,7 @@ List<ConditionalMCPTool> conditionalTools = [
           name: 'puppeteer_session_create',
           description:
               'Create a web browser session that can be controlleed through multiple steps.'
-              'Use this if you want to load a page and then interact with it.',
+              'Use this if you want to load a page and then interact with it or navigate multiple pages',
           properties: puppeteerBaseProperties,
           execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
             try {

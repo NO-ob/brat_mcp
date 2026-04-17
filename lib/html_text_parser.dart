@@ -9,7 +9,11 @@ class HTMLTextParser {
   HTMLTextParser({required this.page, required this.url});
 
   void _walkNode(Node node) {
+    //print("visiting: ${node.attributes}");
     if (node is Text) {
+      if (node is Element) {
+        //print("text is element: ${(node as Element).localName}, class='${(node as Element).className}' id='${(node as Element).id}'");
+      }
       String text = node.text.trim();
       if (text.isNotEmpty) {
         buffer.write('$text ');
@@ -19,9 +23,11 @@ class HTMLTextParser {
     }
 
     if (node is Element) {
+      //print("is element: ${node.attributes}");
       String? content = node.textContent(url);
 
       if (content != null) {
+        //print("ggot text content: ${node.localName}, class='${node.className}' id='${node.id}'");
         buffer.write(content);
       }
 
@@ -30,6 +36,7 @@ class HTMLTextParser {
       }
 
       if (!node.walkable) {
+        //print("not walking: ${node.localName}, class='${node.className}' id='${node.id}'");
         return;
       }
     }
@@ -43,6 +50,6 @@ class HTMLTextParser {
     _walkNode(page);
     String content = buffer.toString();
 
-    return content.replaceAll(RegExp(r'\s+\n'), '\n').replaceAll(RegExp(r'\n{2,}'), '\n').replaceAll(RegExp(r'\s{2,}'), ' ').replaceAll("<bos>", "");
+    return content.replaceAll(RegExp(r' +'), ' ').replaceAll(RegExp(r'\n\n+'), '\n\n').replaceAll("<bos>", "").trim();
   }
 }
