@@ -206,7 +206,12 @@ List<ConditionalMCPTool> conditionalTools = [
   ),
   ConditionalMCPTool(
     binaries: ['google-chrome-stable', 'google-chrome', 'chrome', 'chromium'],
-    winBinaries: ['C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe','C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe', 'C:\\Program Files\\Chromium\\Application\\chrome.exe', 'C:\\Program Files (x86)\\Chromium\\Application\\chrome.exe'],
+    winBinaries: [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files\\Chromium\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Chromium\\Application\\chrome.exe',
+    ],
     key: "chrome",
     builder: (String path) {
       return [
@@ -214,7 +219,7 @@ List<ConditionalMCPTool> conditionalTools = [
           name: 'puppeteer_get_text',
           description:
               'Get text from a webpage using a headless browser. '
-              'Prefer http_get_text first as its faster.',
+              'Prefer http_get_text first as its faster.  Also prefer puppeteer_screenshot to save on tokens',
           properties: puppeteerBaseProperties,
           execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
             PuppeteerSession session = PuppeteerSession.fromArgs(path, props, args);
@@ -272,8 +277,21 @@ List<ConditionalMCPTool> conditionalTools = [
           name: 'puppeteer_session_create',
           description:
               'Create a web browser session that can be controlleed through multiple steps.'
-              'Use this if you want to load a page and then interact with it or navigate multiple pages',
-          properties: puppeteerBaseProperties,
+              'This can be used for purchases.'
+              'Lots of sites block headless sessions if thats the case restart with headless false.'
+              'Use this if you want to load a page and then interact with it or navigate multiple pages.',
+          properties: [
+            ...puppeteerBaseProperties,
+            MCPToolPropertyBool(
+              name: 'headless',
+              description:
+                  'Run browser in headless mode (default true). Set to false if you are being blocked or detected in headless mode.'
+                  '\n This site can\'t be reached is likely due to headless'
+                  '\n ERR_HTTP2_PROTOCOL_ERROR is likely due to headless',
+              required: false,
+              defaultValue: true,
+            ),
+          ],
           execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
             try {
               PuppeteerSession session = PuppeteerSession.fromArgs(path, props, args);
@@ -289,6 +307,7 @@ List<ConditionalMCPTool> conditionalTools = [
             }
           },
         ),
+
         MCPTool(
           name: 'puppeteer_session_screenshot',
           description:
@@ -320,6 +339,67 @@ List<ConditionalMCPTool> conditionalTools = [
             } catch (e) {
               String extra = e is TimeoutException ? ' Try a different wait_until value.' : '';
               return MCPResponse.text('puppeteer_screenshot_session failed: $e$extra');
+            }
+          },
+        ),
+        MCPTool(
+          name: 'puppeteer_session_find_and_click_by_text',
+          description:
+              'Find and click an element by its visible text content. Useful when there are many similar elements like menu items.'
+              'Prefer puppeteer_session_click_element, use this as a fallback',
+          properties: [
+            MCPToolPropertyString(name: 'session_id', description: 'The session id of the browser session', required: true),
+            MCPToolPropertyString(name: 'text', description: 'The visible text to search for e.g. "Pepperoni Feast"', required: true),
+            MCPToolPropertyString(
+              name: 'tag',
+              description: 'Optional tag to narrow search e.g. "button", "a". Defaults to any element.',
+              required: false,
+              defaultValue: '*',
+            ),
+            MCPToolPropertyInt(name: 'nth', description: 'Optional int to click the nth element if multiple.', required: false, defaultValue: 0),
+          ],
+          execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
+            String? sessionId = args["session_id"];
+
+            if (sessionId == null) {
+              return MCPResponse.text('session id is required');
+            }
+
+            try {
+              ManagedPuppeteerSession? managedSession = PuppeteerSessionHandler.instance.get(sessionId);
+              if (managedSession == null) {
+                return MCPResponse.text('No session found for $sessionId');
+              }
+
+              Page? page = managedSession.session.page;
+
+              if (page == null) {
+                return MCPResponse.text('No loaded page please navigate to a page');
+              }
+
+              int nth = Utils().getInt(key: "nth", map: args, def: getProperty(props, "nth")?.defaultValue ?? 0);
+
+              bool found = await page.evaluate(
+                '''(text, tag, nth) => {
+  const els = Array.from(document.querySelectorAll(tag));
+  const matches = els.filter(el => {
+    const directText = Array.from(el.childNodes)
+      .filter(n => n.nodeType === Node.TEXT_NODE)
+      .map(n => n.textContent.trim().toLowerCase());
+    return directText.includes(text.toLowerCase());
+  });
+  if (matches.length === 0) return false;
+  const target = matches[nth] ?? matches[matches.length - 1];
+  target.click();
+  return true;
+}''',
+                args: [args['text'], args['tag'] ?? '*', nth],
+              );
+
+              return MCPResponse.text(found ? 'Clicked element number $nth with text "${args['text']}"' : 'No element found with text "${args['text']}"');
+            } catch (e) {
+              String extra = e is TimeoutException ? ' Try a different wait_until value.' : '';
+              return MCPResponse.text('puppeteer_navigate_session failed: $e$extra');
             }
           },
         ),
@@ -358,7 +438,8 @@ List<ConditionalMCPTool> conditionalTools = [
         ),
         MCPTool(
           name: 'puppeteer_session_get_page_text',
-          description: 'Get text from the currently open webpage of a puppeteer session. ',
+          description:
+              'Get text from the currently open webpage of a puppeteer session. All html data is stripped. Prefer puppeteer_screenshot to save on tokens.',
           properties: [MCPToolPropertyString(name: 'session_id', description: 'The session id of the browser session', required: true)],
           execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
             String? sessionId = args["session_id"];
@@ -394,6 +475,206 @@ List<ConditionalMCPTool> conditionalTools = [
             } catch (e) {
               String extra = e is TimeoutException ? ' Try a different wait_until value.' : '';
               return MCPResponse.text('puppeteer_session_get_page_text failed: $e$extra');
+            }
+          },
+        ),
+
+        MCPTool(
+          name: 'puppeteer_session_get_interactive_elements',
+          description:
+              'Get the raw html of interactive elements on the page.'
+              'This will be useful for creating css selectors',
+          properties: [MCPToolPropertyString(name: 'session_id', description: 'The session id of the browser session', required: true)],
+          execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
+            String? sessionId = args["session_id"];
+
+            if (sessionId == null) {
+              return MCPResponse.text('session id is required');
+            }
+
+            try {
+              ManagedPuppeteerSession? managedSession = PuppeteerSessionHandler.instance.get(sessionId);
+              if (managedSession == null) {
+                return MCPResponse.text('No session found for $sessionId');
+              }
+
+              Page? page = managedSession.session.page;
+
+              if (page == null) {
+                print('No page currently loaded');
+              }
+
+              String html = await page!.content ?? '';
+
+              Document document = parse(html);
+
+              for (Element element in document.querySelectorAll("svg, img")) {
+                element.remove();
+              }
+
+              List<String> elements = document
+                  .querySelectorAll('a, button, input, select, textarea, [role="button"], pie-button')
+                  .map((Element el) {
+                    return "{${el.outerHtml.replaceAll('/>', ' ').replaceAll('</', ' ').replaceAll('<', ' ').replaceAll('>', ' ').replaceAll('"', '').replaceAll("'", '').replaceAll('=', ' ').replaceAll(RegExp(r'\s+'), ' ').trim()}}";
+                  })
+                  .where((s) => s.isNotEmpty)
+                  .toList();
+
+              return MCPResponse.text(elements.join("\n\n"));
+            } catch (e) {
+              String extra = e is TimeoutException ? ' Try a different wait_until value.' : '';
+              return MCPResponse.text('puppeteer_session_click_element failed: $e$extra');
+            }
+          },
+        ),
+        MCPTool(
+          name: 'puppeteer_session_click_element',
+          description: 'Click an element using a selector, screenshot after using this as the page might change',
+          properties: [
+            MCPToolPropertyString(name: 'session_id', description: 'The session id of the browser session', required: true),
+            MCPToolPropertyString(
+              name: 'selector',
+              description:
+                  'The selector of the element to click,'
+                  'Always include the tag in the selector e.g. "button#submit", "a.nav-link", "input[name=email]" — '
+                  'never just "#submit" or ".nav-link" as bare selectors can fail on React pages.',
+              required: true,
+            ),
+          ],
+          execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
+            String? sessionId = args["session_id"];
+            String selector = args["selector"];
+
+            if (sessionId == null) return MCPResponse.text('session id is required');
+
+            try {
+              ManagedPuppeteerSession? managedSession = PuppeteerSessionHandler.instance.get(sessionId);
+              if (managedSession == null) return MCPResponse.text('No session found for $sessionId');
+
+              Page? page = managedSession.session.page;
+              if (page == null) return MCPResponse.text('No loaded page, please navigate to a page');
+
+              bool found = await page.evaluate(
+                '''(selector) => {
+          const el = document.querySelector(selector);
+          if (!el) return false;
+          el.click();
+          return true;
+        }''',
+                args: [selector],
+              );
+
+              return MCPResponse.text(found ? 'Clicked $selector' : 'No element found for $selector');
+            } catch (e) {
+              return MCPResponse.text('puppeteer_session_click_element failed: $e');
+            }
+          },
+        ),
+        MCPTool(
+          name: 'puppeteer_session_remove_popups',
+          description: 'Remove common popups, overlays, cookie banners, and modals from the page that may be blocking interaction.',
+          properties: [MCPToolPropertyString(name: 'session_id', description: 'The session id of the browser session', required: true)],
+          execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
+            String? sessionId = args["session_id"];
+            if (sessionId == null) return MCPResponse.text('session id is required');
+
+            ManagedPuppeteerSession? managedSession = PuppeteerSessionHandler.instance.get(sessionId);
+            if (managedSession == null) return MCPResponse.text('No session found for $sessionId');
+
+            Page? page = managedSession.session.page;
+            if (page == null) return MCPResponse.text('No loaded page, please navigate to a page');
+
+            int removed = await page.evaluate('''() => {
+      const terms = [
+        // generic
+        'popup', 'modal', 'overlay', 'dialog', 'drawer', 'backdrop',
+        'lightbox', 'banner', 'toast', 'tooltip', 'interstitial',
+        // cookie/consent
+        'cookie', 'consent', 'gdpr', 'ccpa', 'privacy-banner',
+        // specific
+        'croShadow', 'croPopup', 'cro-popup', 'cro-overlay',
+        'onetrust', 'cookiebanner', 'cookie-banner', 'cookie-notice',
+        'fc-consent', 'fc-dialog', 'sp-message', 'qc-cmp',
+        // common class patterns
+        'notification', 'announcement', 'takeover', 'floater',
+      ];
+
+      let count = 0;
+      const els = Array.from(document.querySelectorAll('*'));
+      for (const el of els) {
+        const id = (el.id || '').toLowerCase();
+        const cls = (el.className && typeof el.className === 'string' ? el.className : '').toLowerCase();
+        const role = (el.getAttribute('role') || '').toLowerCase();
+        const combined = id + ' ' + cls + ' ' + role;
+        if (terms.some(t => combined.includes(t.toLowerCase()))) {
+          el.remove();
+          count++;
+        }
+      }
+
+      // Also remove any fixed/absolute positioned full-screen overlays
+      for (const el of Array.from(document.querySelectorAll('body > *'))) {
+        const style = window.getComputedStyle(el);
+        if (
+          (style.position === 'fixed' || style.position === 'absolute') &&
+          parseInt(style.zIndex) > 100 &&
+          parseFloat(style.opacity) > 0
+        ) {
+          el.remove();
+          count++;
+        }
+      }
+
+      return count;
+    }''');
+
+            return MCPResponse.text('Removed $removed popup/overlay elements');
+          },
+        ),
+        MCPTool(
+          name: 'puppeteer_session_input_to_element',
+          description: 'Input text in a field using a selector, screenshot after using this as the page might change',
+          properties: [
+            MCPToolPropertyString(name: 'session_id', description: 'The session id of the browser session', required: true),
+            MCPToolPropertyString(name: 'input', description: 'The string to input', required: true),
+            MCPToolPropertyString(name: 'selector', description: 'The selector of the input field', required: true),
+          ],
+          execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
+            String? sessionId = args["session_id"];
+            String input = args["input"];
+            String selector = args["selector"];
+
+            if (sessionId == null) return MCPResponse.text('session id is required');
+
+            try {
+              ManagedPuppeteerSession? managedSession = PuppeteerSessionHandler.instance.get(sessionId);
+              if (managedSession == null) return MCPResponse.text('No session found for $sessionId');
+
+              Page? page = managedSession.session.page;
+              if (page == null) return MCPResponse.text('No loaded page, please navigate to a page');
+
+              bool found = await page.evaluate(
+                '''(selector, value) => {
+          const el = document.querySelector(selector);
+          if (!el) return false;
+          el.focus();
+          // Trigger React/Vue synthetic events so the framework picks up the change
+          const nativeInputSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+          if (nativeInputSetter) {
+            nativeInputSetter.call(el, value);
+          } else {
+            el.value = value;
+          }
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        }''',
+                args: [selector, input],
+              );
+
+              return MCPResponse.text(found ? 'Typed into $selector' : 'No element found for $selector');
+            } catch (e) {
+              return MCPResponse.text('puppeteer_session_input_to_element failed: $e');
             }
           },
         ),

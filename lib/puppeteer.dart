@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:brat_mcp/dice.dart';
 import 'package:brat_mcp/mcp/mcp_tool_property.dart';
 import 'package:brat_mcp/mcp/mcp_tools.dart';
 import 'package:brat_mcp/utils.dart';
@@ -12,13 +13,18 @@ class ManagedPuppeteerSession {
   void Function(String id) onExpiry;
 
   ManagedPuppeteerSession({required this.id, required this.session, required this.onExpiry, required this.duration}) {
-    resetTimer();
+    initTimer();
   }
 
-  void resetTimer() {
+  void initTimer() {
     expiryTimer = Timer(duration, () {
       onExpiry.call(id);
     });
+  }
+
+  void resetTimer() {
+    expiryTimer.cancel();
+    initTimer();
   }
 
   Future<void> closeSession() async {
@@ -90,8 +96,6 @@ List<MCPToolProperty> puppeteerBaseProperties = [
     defaultValue: 0,
   ),
   MCPToolPropertyInt(name: 'viewport_width', description: 'Browser viewport width in pixels (default 1280)', required: false, defaultValue: 1280),
-  MCPToolPropertyString(name: 'userAgent', description: 'User agent override', defaultValue: null),
-  MCPToolPropertyString(name: 'referer', description: 'Referer override', defaultValue: null),
 ];
 
 class PuppeteerSession {
@@ -120,8 +124,7 @@ class PuppeteerSession {
     String waitUntil = args['wait_until'] ?? getProperty(props, 'wait_until')?.defaultValue ?? 'networkalmostidle';
     int waitMs = Utils().getInt(key: 'wait_ms', map: args, def: getProperty(props, 'wait_ms')?.defaultValue ?? 0);
     int viewportWidth = Utils().getInt(key: 'viewport_width', map: args, def: getProperty(props, 'viewport_width')?.defaultValue ?? 1280);
-    String? userAgent = args['userAgent'] ?? getProperty(props, 'userAgent')?.defaultValue;
-    String? referer = args['referer'] ?? getProperty(props, 'referer')?.defaultValue;
+    bool headless = Utils().getBool(key: 'headless', map: args, def: getProperty(props, 'headless')?.defaultValue ?? true);
 
     Until navigationWait;
 
@@ -142,22 +145,20 @@ class PuppeteerSession {
         navigationWait = Until.networkAlmostIdle;
     }
 
-    return PuppeteerSession(
-      executablePath: executablePath,
-      navigationWait: navigationWait,
-      waitMs: waitMs,
-      viewportWidth: viewportWidth,
-      headless: true,
-      userAgent: userAgent,
-      referer: referer,
-    );
+    return PuppeteerSession(executablePath: executablePath, navigationWait: navigationWait, waitMs: waitMs, viewportWidth: viewportWidth, headless: headless);
   }
 
   Future<void> loadBrowser() async {
     browser = await puppeteer.launch(
       headless: headless,
       executablePath: executablePath,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-blink-features=AutomationControlled',
+        '--window-position=-10000,0',
+      ],
     );
 
     Page loadedPage = await browser!.newPage();
@@ -177,14 +178,14 @@ class PuppeteerSession {
 
   Future<Page> navigate({String? waitForSelector, required String url}) async {
     try {
-      await page!.goto(url, wait: navigationWait);
+      await page!.goto(url, wait: navigationWait, timeout: Duration(seconds: 10));
     } catch (e) {
       print('Navigation event never fired for $url, continuing anyway: $e');
     }
 
     if (waitForSelector != null && waitForSelector.isNotEmpty) {
       try {
-        await page!.waitForSelector(waitForSelector, timeout: Duration(seconds: 15));
+        await page!.waitForSelector(waitForSelector, timeout: Duration(seconds: 10));
       } catch (e) {
         print('Selector "$waitForSelector" never appeared, continuing anyway: $e');
       }
