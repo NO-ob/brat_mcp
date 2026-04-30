@@ -8,7 +8,7 @@ enum AvatarExpression { neutral, smug, happy, angry, horny, surprised, blush, sa
 
 enum AvatarAnimation { idle, bounce, spin, leanLeft, leanRight, nod, shakeHead, jump }
 
-enum CameraView { closeUp, fullBody, dutchLeft, dutchRight, medium }
+enum CameraView { closeUp, fullBody, dutchLeft, dutchRight, medium, thighs }
 
 enum AvatarParticles { heart, anger, sweat, star, musicNote }
 
