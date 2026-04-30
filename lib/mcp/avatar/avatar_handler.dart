@@ -31,12 +31,12 @@ class AvatarHandler {
     }
   }
 
-  void spawnParticles(AvatarParticles particles) async {
+  void spawnParticles(AvatarParticles particles, int particleCount) async {
     for (WebSocketChannel client in activeClients) {
       client.sink.add(
         jsonEncode({
           "action": "spawn_particle",
-          "args": {"type": particles.name},
+          "args": {"type": particles.name, "amount": particleCount},
         }),
       );
     }

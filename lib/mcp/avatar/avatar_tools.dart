@@ -4,7 +4,7 @@ import 'package:brat_mcp/mcp/mcp_tool.dart';
 import 'package:brat_mcp/mcp/mcp_tool_property.dart';
 import 'package:brat_mcp/utils.dart';
 
-enum AvatarExpression { neutral, smug, happy, angry, surprised, blush, sad, confused }
+enum AvatarExpression { neutral, smug, happy, angry, horny, surprised, blush, sad, confused }
 
 enum AvatarAnimation { idle, bounce, spin, leanLeft, leanRight, nod, shakeHead, jump }
 
@@ -45,14 +45,16 @@ List<MCPTool> avatarTools = [
         description: "The type of particles to spawn. available options: [${AvatarParticles.values.map((expr) => expr.name).join(",")}]",
         required: true,
       ),
+      MCPToolPropertyInt(name: "amount", description: "The amount of partices", required: true, defaultValue: 1),
     ],
     execute: (props, args) async {
       String? particleString = args['particleType'];
+      int particleCount = Utils().getInt(key: "amount", map: args, def: 1);
 
       try {
         AvatarParticles? particles = AvatarParticles.values.byName(particleString!);
 
-        AvatarHandler.instance.spawnParticles(particles);
+        AvatarHandler.instance.spawnParticles(particles, particleCount);
         return MCPResponse.text('spawned particles: ${particles.name}');
       } catch (e, stackTrace) {
         return MCPResponse.text('Failed to parse expression $e, $stackTrace');
