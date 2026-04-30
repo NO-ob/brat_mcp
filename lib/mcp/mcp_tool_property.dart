@@ -34,3 +34,18 @@ class MCPToolPropertyInt extends MCPToolProperty {
     return superJson;
   }
 }
+
+class MCPToolPropertyStringList extends MCPToolProperty {
+  MCPToolPropertyStringList({required super.name, required super.description, super.required, List<String>? super.defaultValue})
+    : super(type: MCPropertyType.string);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'type': 'array',
+      'description': description,
+      'items': {'type': 'string'},
+      if (defaultValue != null) 'default': defaultValue,
+    };
+  }
+}

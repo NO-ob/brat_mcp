@@ -2,8 +2,7 @@ import 'dart:io';
 
 class Utils {
   Future<String?> whichPath(String command) async {
-
-    if(Platform.isWindows){
+    if (Platform.isWindows) {
       return whichPathWindows(command);
     }
 
@@ -18,16 +17,13 @@ class Utils {
     }
   }
 
-   Future<String?> whichPathWindows(String command) async {
+  Future<String?> whichPathWindows(String command) async {
     try {
-      return File(command).existsSync() ? command :  null;
+      return File(command).existsSync() ? command : null;
     } catch (_) {
       return null;
     }
   }
-
-  
-
 
   bool getBool({required String key, required Map<String, dynamic> map, required bool def}) {
     var value = map[key];
@@ -63,5 +59,13 @@ class Utils {
     }
 
     return value;
+  }
+
+  List<T> getList<T>({required String key, required Map<String, dynamic> map, required List<T> def}) {
+    var value = map[key];
+    if (value is List) {
+      return value.whereType<T>().toList();
+    }
+    return def;
   }
 }

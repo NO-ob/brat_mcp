@@ -102,7 +102,10 @@ List<MCPTool> defaultTools = [
   ),
   MCPTool(
     name: 'http_get_text',
-    description: 'Read and extract readable text from a webpage using http get. Prefer over puppeteer_get_text',
+    description:
+        'Fetch and extract readable text from a webpage via HTTP GET.\n'
+        'Use this as the first choice for reading web pages. its faster and lighter than puppeteer.\n'
+        'Not suitable for JavaScript-heavy pages or sites requiring interaction.',
     properties: [
       MCPToolPropertyString(name: 'url', description: 'The url to get', required: true),
       ...httpHeaderProperties,
@@ -146,7 +149,10 @@ List<MCPTool> defaultTools = [
   ),
   MCPTool(
     name: 'web_search',
-    description: 'Search the web using duck duck go, useful for finding links to actual information or content',
+    description:
+        'Search the web using DuckDuckGo. Use this to find URLs and links to relevant content.\n'
+        'If bot  detection kicks in do not keep retrying with different queries they will fail.\n'
+        'Switch to a different tool instead.',
     properties: [
       MCPToolPropertyString(name: 'query', description: 'The thing to search for', required: true),
       MCPToolPropertyInt(name: 'page', description: 'The page number inital is 0', required: false, defaultValue: 0),
@@ -218,8 +224,11 @@ List<ConditionalMCPTool> conditionalTools = [
         MCPTool(
           name: 'puppeteer_get_text',
           description:
-              'Get text from a webpage using a headless browser. '
-              'Prefer http_get_text first as its faster.  Also prefer puppeteer_screenshot to save on tokens',
+              'Extract readable text from a single webpage using a browser.\n'
+              'Useful for single page reads where JavaScript is required '
+              'and you dont need to interact with the page.\n'
+              'Prefer http_get_text where possible as its faster.\n'
+              'For multistep tasks searches, purchases, form flows, use puppeteer_session_* tools instead.',
           properties: puppeteerBaseProperties,
           execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
             PuppeteerSession session = PuppeteerSession.fromArgs(path, props, args);
@@ -252,9 +261,10 @@ List<ConditionalMCPTool> conditionalTools = [
         MCPTool(
           name: 'puppeteer_screenshot',
           description:
-              'Take a full-page screenshot of a webpage using a headless Chromium browser. '
-              'Captures the entire scrollable page, not just the visible viewport. '
-              'Returns an image the assistant can see.',
+              'Take a full-page screenshot of a single webpage using a headless browser.'
+              'Use this for a single visual screenshot where you need to see the page layout or content. '
+              'Prefer this over puppeteer_get_text to save tokens.'
+              'For multi step tasks searches, purchases, form flows, use puppeteer_session_* tools instead.',
           properties: puppeteerBaseProperties,
           execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
             PuppeteerSession session = PuppeteerSession.fromArgs(path, props, args);
@@ -276,10 +286,12 @@ List<ConditionalMCPTool> conditionalTools = [
         MCPTool(
           name: 'puppeteer_session_create',
           description:
-              'Create a web browser session that can be controlleed through multiple steps.'
-              'This can be used for purchases.'
-              'Lots of sites block headless sessions if thats the case restart with headless false.'
-              'Use this if you want to load a page and then interact with it or navigate multiple pages.',
+              'Open a persistent browser session for complex, multi step tasks.\n'
+              'Use this when you need to interact with a site across multiple steps for example:\n'
+              'performing a search and clicking through results, adding items to a cart and checking out,'
+              'logging in and navigating a dashboard, or filling out multi-page forms.\n'
+              'After creating the session, use puppeteer_session_* tools to navigate, interact, and screenshot.'
+              'If the site blocks headless mode (e.g. CAPTCHA or blank pages), set headless to false.',
           properties: [
             ...puppeteerBaseProperties,
             MCPToolPropertyBool(
@@ -313,6 +325,7 @@ List<ConditionalMCPTool> conditionalTools = [
           description:
               'Take a full-page screenshot of a webpage of a currently running browser session. '
               'Captures the entire scrollable page, not just the visible viewport. '
+              'Prefer this over getting text to save tokens. '
               'Returns an image the assistant can see.',
           properties: [MCPToolPropertyString(name: 'session_id', description: 'The session id of the browser session', required: true)],
           execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
@@ -478,7 +491,85 @@ List<ConditionalMCPTool> conditionalTools = [
             }
           },
         ),
+        MCPTool(
+          name: 'puppeteer_session_kill',
+          description: 'Kill running puppeteer sessions when they arent needed anymore',
+          properties: [MCPToolPropertyStringList(name: 'session_ids', description: 'The session id of the browser sessions you want to kill', required: true)],
+          execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
+            List<String> sessionIds = Utils().getList<String>(key: "session_ids", map: args, def: []);
 
+            if (sessionIds.isEmpty) {
+              return MCPResponse.text('empty session id list');
+            }
+
+            try {
+              List<String> closed = [];
+              for (String sessionId in sessionIds) {
+                bool didClose = await PuppeteerSessionHandler.instance.closeSession(id: sessionId);
+
+                if (didClose) {
+                  closed.add(sessionId);
+                }
+              }
+
+              return MCPResponse.text("Killed sessions: $closed");
+            } catch (e) {
+              return MCPResponse.text('puppeteer_session_kill failed: $e');
+            }
+          },
+        ),
+        MCPTool(
+          name: 'puppeteer_session_keep_alive',
+          description:
+              'Sessions currently expire after a time period, calll this to keep a session open for the user to interact with like for completing a checkout',
+          properties: [MCPToolPropertyString(name: 'session_id', description: 'The session id of the browser session', required: true)],
+          execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
+            String? sessionId = args["session_id"];
+
+            if (sessionId == null) {
+              return MCPResponse.text('session id is required');
+            }
+
+            try {
+              ManagedPuppeteerSession? managedSession = PuppeteerSessionHandler.instance.get(sessionId);
+              if (managedSession == null) {
+                return MCPResponse.text('No session found for $sessionId');
+              }
+              managedSession.keepAlive = true;
+              managedSession.expiryTimer.cancel();
+
+              return MCPResponse.text("Paused kill timer for $sessionId");
+            } catch (e) {
+              return MCPResponse.text('puppeteer_session_keep_alive failed: $e');
+            }
+          },
+        ),
+        MCPTool(
+          name: 'puppeteer_session_kill_all',
+          description: 'Kill all running puppeteer sessions when they arent needed anymore',
+          properties: [],
+          execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
+            try {
+              await PuppeteerSessionHandler.instance.closeAll();
+
+              return MCPResponse.text("Killed all sessions");
+            } catch (e) {
+              return MCPResponse.text('puppeteer_session_kill_all failed: $e');
+            }
+          },
+        ),
+        MCPTool(
+          name: 'puppeteer_session_list',
+          description: 'Kill all running puppeteer sessions when they arent needed anymore',
+          properties: [],
+          execute: (List<MCPToolProperty> props, Map<String, dynamic> args) async {
+            try {
+              return MCPResponse.text("Sessions: ${PuppeteerSessionHandler.instance.sessions.values}");
+            } catch (e) {
+              return MCPResponse.text('puppeteer_session_kill_all failed: $e');
+            }
+          },
+        ),
         MCPTool(
           name: 'puppeteer_session_get_interactive_elements',
           description:
@@ -513,7 +604,7 @@ List<ConditionalMCPTool> conditionalTools = [
               }
 
               List<String> elements = document
-                  .querySelectorAll('a, button, input, select, textarea, [role="button"], pie-button')
+                  .querySelectorAll('a, button, input, select, textarea, [role="button"], pie-button, [contenteditable="true"]')
                   .map((Element el) {
                     return "{${el.outerHtml.replaceAll('/>', ' ').replaceAll('</', ' ').replaceAll('<', ' ').replaceAll('>', ' ').replaceAll('"', '').replaceAll("'", '').replaceAll('=', ' ').replaceAll(RegExp(r'\s+'), ' ').trim()}}";
                   })
@@ -655,20 +746,47 @@ List<ConditionalMCPTool> conditionalTools = [
 
               bool found = await page.evaluate(
                 '''(selector, value) => {
-          const el = document.querySelector(selector);
-          if (!el) return false;
-          el.focus();
-          // Trigger React/Vue synthetic events so the framework picks up the change
-          const nativeInputSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-          if (nativeInputSetter) {
-            nativeInputSetter.call(el, value);
-          } else {
-            el.value = value;
-          }
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-          return true;
-        }''',
+  const el = document.querySelector(selector);
+  if (!el) return false;
+
+  el.focus();
+
+  if (el.isContentEditable) {
+    // Clear and insert using execCommand — avoids innerHTML issues
+    document.execCommand('selectAll', false, null);
+    document.execCommand('insertText', false, value);
+
+    // Walk up the tree firing input events — Angular listens on ancestors
+    let node = el;
+    while (node) {
+      node.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+      node.dispatchEvent(new Event('change', { bubbles: true }));
+      node = node.parentElement;
+    }
+
+    // Move cursor to end
+    const range = document.createRange();
+    const sel = window.getSelection();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    return true;
+  }
+
+  const protoMap = {
+    INPUT: window.HTMLInputElement.prototype,
+    TEXTAREA: window.HTMLTextAreaElement.prototype,
+    SELECT: window.HTMLSelectElement.prototype,
+  };
+  const proto = protoMap[el.tagName];
+  const setter = proto && Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  setter ? setter.call(el, value) : (el.value = value);
+  el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  return true;
+}''',
                 args: [selector, input],
               );
 

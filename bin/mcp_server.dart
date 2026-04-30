@@ -1,11 +1,16 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:args/args.dart';
+import 'package:brat_mcp/mcp/avatar/avatar_handler.dart';
 import 'package:brat_mcp/mcp/mcp_handler.dart';
 import 'package:brat_mcp/puppeteer.dart';
+import 'package:path/path.dart' as Path;
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
+import 'package:shelf_web_socket/shelf_web_socket.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/status.dart' as status;
 
 Future<void> onKill() async {
   await PuppeteerSessionHandler.instance.closeAll();
@@ -23,6 +28,7 @@ void main(List<String> arguments) async {
     ..addOption('ip', abbr: 'i', defaultsTo: '0.0.0.0', help: 'The ip to bind to')
     ..addOption('name', abbr: 'n', defaultsTo: '💢 Brat MCP', help: 'The server name')
     ..addOption('chrome', abbr: 'c', help: 'Chrome path override for pupeteer if yours isnt detected')
+    ..addOption('avatar', abbr: 'a', help: 'Path to avatar html file')
     ..addFlag('help', abbr: 'h', negatable: false, help: 'Show usage information');
 
   ArgResults argResults;
@@ -43,10 +49,24 @@ void main(List<String> arguments) async {
   final String host = argResults['ip'];
   final String name = argResults['name'];
   final String? chromePath = argResults['chrome'];
+  final String? avatarPath = argResults['avatar'] ?? Path.join(Directory.current.path, "gemma-chan.html");
+
+  String? avatarPageContent;
+
+  try {
+    File avatarPage = File(avatarPath!);
+    avatarPageContent = avatarPage.readAsStringSync();
+
+    if (avatarPageContent.isNotEmpty) {
+      print("Avatar page loaded.");
+    }
+  } catch (e) {
+    print("Could not load avatar from $avatarPath page disabling.");
+  }
 
   final router = Router();
   final MCPHandler mcpHandler = MCPHandler();
-  await mcpHandler.initTools(pathOverrides: {'chrome': chromePath});
+  await mcpHandler.initTools(pathOverrides: {'chrome': chromePath}, enableAvatar: (avatarPageContent != null && avatarPageContent.isNotEmpty));
 
   router.get('/mcp', (Request request) {
     HttpConnectionInfo? connectionInfo = request.context['shelf.io.connection_info'] as HttpConnectionInfo?;
@@ -63,6 +83,7 @@ void main(List<String> arguments) async {
 
   router.post('/mcp', (Request request) async {
     final body = await request.readAsString();
+
     final payload = jsonDecode(body) as Map<String, dynamic>;
 
     print('/mcp Called, Method: ${payload['method']} | ID: ${payload['id']}');
@@ -109,6 +130,53 @@ void main(List<String> arguments) async {
     }
 
     return _jsonResponse({'jsonrpc': '2.0', 'id': id, 'result': {}});
+  });
+
+  AvatarHandler avatarHandler = AvatarHandler.instance;
+
+  router.get(
+    '/avatarSocket',
+    webSocketHandler((WebSocketChannel webSocket, dynamic requestContext) {
+      print('avatar connected to socket');
+      avatarHandler.activeClients.add(webSocket);
+
+      webSocket.stream.listen(
+        (message) {
+          for (WebSocketChannel client in avatarHandler.activeClients) {
+            if (client != webSocket) {
+              client.sink.add(message);
+            }
+          }
+        },
+        onDone: () {
+          avatarHandler.activeClients.remove(webSocket);
+        },
+        onError: (error) {
+          print('socket error: $error');
+          avatarHandler.activeClients.remove(webSocket);
+        },
+      );
+    }),
+  );
+
+  router.get('/avatar', (Request request) {
+    if (avatarPageContent == null || avatarPageContent.isEmpty) {
+      return Response.notFound('Avatar page not loaded');
+    }
+
+    return Response.ok(
+      //'<!DOCTYPE html><html><body><h1>Iframe test</h1></body></html>',
+      avatarPageContent,
+      headers: {
+        'Content-Type': 'text/html',
+        'X-Frame-Options': 'ALLOWALL',
+        'Content-Security-Policy': "frame-ancestors *;",
+        'Access-Control-Allow-Origin': '*',
+        'Cross-Origin-Resource-Policy': 'cross-origin',
+        'Cross-Origin-Opener-Policy': 'unsafe-none',
+        'Cross-Origin-Embedder-Policy': 'unsafe-none',
+      },
+    );
   });
 
   final handler = const Pipeline().addMiddleware(logRequests()).addMiddleware(_corsMiddleware()).addHandler(router.call);

@@ -1,5 +1,6 @@
 // ignore_for_file: overridden_fields
 
+import 'package:brat_mcp/mcp/avatar/avatar_tools.dart';
 import 'package:brat_mcp/mcp/mcp_response.dart';
 import 'package:brat_mcp/mcp/mcp_tool_property.dart';
 import 'package:brat_mcp/mcp/mcp_tools.dart';
@@ -8,13 +9,17 @@ import 'package:brat_mcp/mcp/mcp_tool.dart';
 class MCPHandler {
   List<MCPTool> tools = [...defaultTools];
 
-  Future<void> initTools({Map<String, String?> pathOverrides = const {}}) async {
+  Future<void> initTools({Map<String, String?> pathOverrides = const {}, required bool enableAvatar}) async {
     for (ConditionalMCPTool conditional in conditionalTools) {
       List<MCPTool> resolved = await conditional.resolve(pathOverride: pathOverrides[conditional.key]);
 
       if (resolved.isNotEmpty) {
         tools.addAll(resolved);
       }
+    }
+
+    if (enableAvatar) {
+      tools.addAll(avatarTools);
     }
   }
 

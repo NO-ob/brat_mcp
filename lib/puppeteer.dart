@@ -10,6 +10,8 @@ class ManagedPuppeteerSession {
   final PuppeteerSession session;
   late Timer expiryTimer;
   final Duration duration;
+  final Stopwatch stopwatch = Stopwatch();
+  bool keepAlive = false;
   void Function(String id) onExpiry;
 
   ManagedPuppeteerSession({required this.id, required this.session, required this.onExpiry, required this.duration}) {
@@ -17,18 +19,31 @@ class ManagedPuppeteerSession {
   }
 
   void initTimer() {
+    if (keepAlive) {
+      return;
+    }
     expiryTimer = Timer(duration, () {
       onExpiry.call(id);
     });
+    stopwatch.start();
   }
 
   void resetTimer() {
     expiryTimer.cancel();
+    stopwatch.stop();
+    stopwatch.reset();
     initTimer();
   }
 
   Future<void> closeSession() async {
+    expiryTimer.cancel();
+    stopwatch.stop();
     return session.browser?.close();
+  }
+
+  @override
+  String toString() {
+    return "id: $id, url: ${session.page?.url}, timeRemaining: ${((duration.inSeconds - stopwatch.elapsed.inSeconds) / 60).toStringAsFixed(1)} minutes, killTimerActive: ${expiryTimer.isActive}, headless: ${session.headless}\n";
   }
 }
 
@@ -59,17 +74,21 @@ class PuppeteerSessionHandler {
     return session;
   }
 
-  Future<void> closeSession({required String id, bool isExpired = false}) async {
+  Future<bool> closeSession({required String id, bool isExpired = false}) async {
     ManagedPuppeteerSession? session = sessions.remove(id);
-    await session?.closeSession();
+    if (session == null) {
+      return false;
+    }
+    await session.closeSession();
     print("$id closed, reason: ${isExpired ? "expired" : "closed"}");
+    return true;
   }
 
   Future<void> closeAll() async {
-    for (ManagedPuppeteerSession session in sessions.values) {
-      await session.closeSession();
+    List<String> sessionsIds = sessions.keys.toList();
+    for (String id in sessionsIds) {
+      await closeSession(id: id);
     }
-    sessions.clear();
     print("all sessions closed");
   }
 }
@@ -161,7 +180,9 @@ class PuppeteerSession {
       ],
     );
 
-    Page loadedPage = await browser!.newPage();
+    BrowserContext context = await browser!.createIncognitoBrowserContext();
+
+    Page loadedPage = await context.newPage();
 
     await loadedPage.setViewport(DeviceViewport(width: viewportWidth, height: 900));
 

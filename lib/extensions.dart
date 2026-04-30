@@ -65,8 +65,8 @@ extension NodeExtensions on Element {
     }
 
     if (localName == 'img') {
-      String? src = attributes['src'];
-      if (src != null && src.isNotEmpty) {
+      String? src = attributes['data-src'] ?? attributes['src'];
+      if (src != null && src.isNotEmpty && !src.startsWith('data:')) {
         String imageUrl = Uri.parse(url).resolve(src).toString();
         return ('\nImage $imageUrl\n');
       }
@@ -75,7 +75,7 @@ extension NodeExtensions on Element {
   }
 
   bool get walkable {
-    if (['script', 'style'].contains(localName)) {
+    if (['script', 'style', 'noscript', 'iframe'].contains(localName)) {
       return false;
     }
 

@@ -1,6 +1,6 @@
 name: brat_mcp
 description: An MCP Server for Llama CPP.
-version: 1.0.6
+version: 1.0.7
 
 environment:
   sdk: ^3.11.5
@@ -14,6 +14,8 @@ dependencies:
   puppeteer: ^3.22.0
   shelf: ^1.4.2
   shelf_router: ^1.1.4
+  shelf_web_socket: ^3.0.0
+  web_socket_channel: ^3.0.3
 
 dev_dependencies:
   lints: ^6.0.0
