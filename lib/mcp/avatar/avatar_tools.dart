@@ -12,6 +12,8 @@ enum CameraView { closeUp, fullBody, dutchLeft, dutchRight, medium, thighs }
 
 enum AvatarParticles { heart, anger, sweat, star, musicNote }
 
+enum AvatarClothing { chefHat }
+
 List<MCPTool> avatarTools = [
   MCPTool(
     name: 'avatar_set_expression',
@@ -106,6 +108,74 @@ List<MCPTool> avatarTools = [
         return MCPResponse.text('${animation.name} set for $seconds seconds');
       } catch (e, stackTrace) {
         return MCPResponse.text('Failed to parse animation $e, $stackTrace');
+      }
+    },
+  ),
+  MCPTool(
+    name: 'avatar_set_clothing',
+    description: 'Wear pieces of clothing, use this if there are clothes that suit a question youve been ask or an action youre doing\n',
+    properties: [
+      MCPToolPropertyStringList(
+        name: "clothing",
+        description: "The clothes to wear. available options: [${AvatarClothing.values.map((expr) => expr.name).join(",")}]",
+        required: true,
+      ),
+    ],
+    execute: (props, args) async {
+      List<String> clothingStrings = Utils().getList<String>(key: "clothing", map: args, def: []);
+      List<AvatarClothing> clothes = [];
+      try {
+        for (String item in clothingStrings) {
+          AvatarClothing clothing = AvatarClothing.values.byName(item);
+          clothes.add(clothing);
+        }
+      } catch (e, stackTrace) {
+        //
+      }
+
+      try {
+        if (clothes.isEmpty) {
+          return MCPResponse.text('Clothes lsit is empty');
+        }
+
+        AvatarHandler.instance.setClothing(clothes);
+        return MCPResponse.text('${clothes.map((elem) => elem.name).join(", ")} set');
+      } catch (e, stackTrace) {
+        return MCPResponse.text('Failed to parse clothes $e, $stackTrace');
+      }
+    },
+  ),
+  MCPTool(
+    name: 'avatar_remove_clothing',
+    description: 'Remove pieces of clothing\n',
+    properties: [
+      MCPToolPropertyStringList(
+        name: "clothing",
+        description: "The clothes to remove. available options: [${AvatarClothing.values.map((expr) => expr.name).join(",")}]",
+        required: true,
+      ),
+    ],
+    execute: (props, args) async {
+      List<String> clothingStrings = Utils().getList<String>(key: "clothing", map: args, def: []);
+      List<AvatarClothing> clothes = [];
+      try {
+        for (String item in clothingStrings) {
+          AvatarClothing clothing = AvatarClothing.values.byName(item);
+          clothes.add(clothing);
+        }
+      } catch (e, stackTrace) {
+        //
+      }
+
+      try {
+        if (clothes.isEmpty) {
+          return MCPResponse.text('Clothes lsit is empty');
+        }
+
+        AvatarHandler.instance.removeClothing(clothes);
+        return MCPResponse.text('${clothes.map((elem) => elem.name).join(", ")} set');
+      } catch (e, stackTrace) {
+        return MCPResponse.text('Failed to parse clothes $e, $stackTrace');
       }
     },
   ),

@@ -680,6 +680,33 @@
                 if (name === 'change_outfit_color') {
                     if (args.color && this.clothMat) this.clothMat.color.set(args.color);
                 }
+                if (name === 'set_clothing') this.set_clothing(args.items);
+                if (name === 'remove_clothing') this.remove_clothing(args.items);
+            },
+
+            set_clothing(items) {
+                for (const item of items) {
+                    switch (item) {
+                        case 'chefHat':
+                            if (!this.chefHatGroup) this.buildChefHat();
+                            if (!this.headGroup.getObjectById(this.chefHatGroup.id)) {
+                                this.headGroup.add(this.chefHatGroup);
+                            }
+                            break;
+
+                    }
+                }
+            },
+
+            remove_clothing(items) {
+                for (const item of items) {
+                    switch (item) {
+                        case 'chefHat':
+                            if (this.chefHatGroup) this.headGroup.remove(this.chefHatGroup);
+                            break;
+
+                    }
+                }
             },
 
             setExpression(expr) {
@@ -922,7 +949,30 @@
                     if (dot) dot.style.backgroundColor = '#ef4444';
                     console.error('WebSocket connection error:', err);
                 };
-            }
+            },
+
+            buildChefHat() {
+                const hatGroup = new THREE.Group();
+                const whiteMat = new THREE.MeshToonMaterial({ color: 0xffffff });
+                const bandMat = new THREE.MeshToonMaterial({ color: 0xdddddd });
+
+                const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.88, 0.88, 0.09, 32), whiteMat);  // ← material added
+
+                const band = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.74, 0.28, 32), bandMat);
+                band.position.y = 0.17;
+
+                const top = new THREE.Mesh(new THREE.CylinderGeometry(0.64, 0.67, 0.85, 32), whiteMat);
+                top.position.y = 0.67;
+
+                const dome = new THREE.Mesh(new THREE.SphereGeometry(0.64, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), whiteMat);
+                dome.position.y = 1.10;
+
+                hatGroup.add(brim, band, top, dome);  // ← all four added
+
+                hatGroup.position.set(0, 1.08, 0);
+                this.chefHatGroup = hatGroup;
+                return hatGroup;
+            },
         };
 
         window.addEventListener('DOMContentLoaded', () => app.init());

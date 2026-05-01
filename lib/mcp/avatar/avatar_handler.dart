@@ -52,4 +52,26 @@ class AvatarHandler {
       );
     }
   }
+
+  void setClothing(List<AvatarClothing> clothes) async {
+    for (WebSocketChannel client in activeClients) {
+      client.sink.add(
+        jsonEncode({
+          "action": "set_clothing",
+          "args": {"items": clothes.map((elem) => elem.name).toList()},
+        }),
+      );
+    }
+  }
+
+  void removeClothing(List<AvatarClothing> clothes) async {
+    for (WebSocketChannel client in activeClients) {
+      client.sink.add(
+        jsonEncode({
+          "action": "remove_clothing",
+          "args": {"items": clothes.map((elem) => elem.name).toList()},
+        }),
+      );
+    }
+  }
 }
