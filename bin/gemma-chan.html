@@ -287,6 +287,7 @@
             <div class="hover-controls">
                 <button class="btn-control" onclick="app.poke()">Poke</button>
                 <button class="btn-control" onclick="app.resetCamera()">Reset Cam</button>
+                <button class="btn-control" onclick="app.setCamera('fullBody')">Full Body</button>
                 <button class="btn-control" id="followMouseButton" onclick="app.toggleFollow(true)">Follow mouse:
                     disabled</button>
             </div>
@@ -320,6 +321,7 @@
             blushL: null,
             blushR: null,
             hairMat: null,
+            browMat: null,
             clothMat: null,
             pupilMat: null,
             targetRot: { x: 0, y: 0 },
@@ -328,8 +330,8 @@
 
             init() {
                 this.initThree();
+                this.setHairStyles(["shortTwinTails", "buns"]);
                 this.animate();
-
                 const savedIp = localStorage.getItem('mcp_ip') || 'localhost';
                 const savedPort = localStorage.getItem('mcp_port') || '6969';
                 document.getElementById('ipInput').value = savedIp;
@@ -368,6 +370,10 @@
                 // Materials
                 const skinMat = new THREE.MeshToonMaterial({ color: 0xffe0bd });
                 this.hairMat = new THREE.MeshToonMaterial({ color: 0x87CEEB });
+                this.browMat = new THREE.MeshToonMaterial({
+                    color:
+                        new THREE.Color().copy(this.hairMat.color).lerp(new THREE.Color(0x000000), 0.3)
+                });
                 const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
                 this.pupilMat = new THREE.MeshBasicMaterial({ color: 0x222222 });
                 const blushMat = new THREE.MeshBasicMaterial({ color: 0xffaaaa, transparent: true, opacity: 0 });
@@ -382,8 +388,11 @@
                 head.castShadow = true;
                 this.headGroup.add(head);
 
+                this.hairStyleGroup = new THREE.Group();
+                this.headGroup.add(this.hairStyleGroup);
+
                 // Hair Back
-                const hairBack = new THREE.Mesh(new THREE.SphereGeometry(1.18, 32, 32, 0, Math.PI * 2, 0, Math.PI * 0.7), this.hairMat);
+                const hairBack = new THREE.Mesh(new THREE.SphereGeometry(1.1, 32, 32, 0, Math.PI * 2, 0, Math.PI * 0.7), this.hairMat);
                 hairBack.rotation.x = -Math.PI / 2 + 0.3;
                 hairBack.position.set(0, 0.15, -0.15);
                 this.headGroup.add(hairBack);
@@ -396,24 +405,33 @@
                     this.headGroup.add(bang);
                 }
 
-                // Side locks
-                const lockL = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.5, 0.35), this.hairMat);
-                lockL.position.set(-1.08, -0.3, 0.2);
-                this.headGroup.add(lockL);
-                const lockR = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.5, 0.35), this.hairMat);
-                lockR.position.set(1.08, -0.3, 0.2);
-                this.headGroup.add(lockR);
+
 
                 // Eyes
                 const makeEye = () => {
                     const g = new THREE.Group();
-                    const w = new THREE.Mesh(new THREE.SphereGeometry(0.26, 16, 16), eyeWhiteMat);
+
+                    // clipping plane cuts off the top of the eye — local Y in eye space
+                    const lidClip = new THREE.Plane(new THREE.Vector3(0, -1, 0), 999);
+
+                    const eyeWhiteClipped = new THREE.MeshBasicMaterial({
+                        color: 0xffffff,
+                        clippingPlanes: [lidClip],
+                    });
+                    const pupilClipped = new THREE.MeshBasicMaterial({
+                        color: 0x222222,
+                        clippingPlanes: [lidClip],
+                    });
+
+                    const w = new THREE.Mesh(new THREE.SphereGeometry(0.26, 16, 16), eyeWhiteClipped);
                     w.scale.z = 0.6;
                     g.add(w);
-                    const p = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 16), this.pupilMat);
+
+                    const p = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 16), pupilClipped);
                     p.position.z = 0.18;
                     g.add(p);
-                    return { group: g, pupil: p };
+
+                    return { group: g, pupil: p, lidClip };
                 };
                 this.eyeL = makeEye();
                 this.eyeL.group.position.set(-0.36, 0.1, 0.88);
@@ -424,12 +442,12 @@
                 this.headGroup.add(this.eyeR.group);
 
                 // Eyebrows
-                this.browL = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.06, 0.06), this.hairMat);
-                this.browL.position.set(-0.36, 0.48, 0.96);
+                this.browL = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.06, 0.06), this.browMat);
+                this.browL.position.set(-0.36, 0.48, 1.12);
                 this.headGroup.add(this.browL);
 
-                this.browR = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.06, 0.06), this.hairMat);
-                this.browR.position.set(0.36, 0.48, 0.96);
+                this.browR = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.06, 0.06), this.browMat);
+                this.browR.position.set(0.36, 0.48, 1.12);
                 this.headGroup.add(this.browR);
 
                 // Mouths
@@ -591,12 +609,14 @@
                 for (let i = 0; i < 64; i += 16) ctx.fillRect(i, 0, 8, 64);
                 const curtainTex = new THREE.CanvasTexture(cvs);
                 const curtainMat = new THREE.MeshStandardMaterial({ map: curtainTex, roughness: 0.9 });
-                const cL = new THREE.Mesh(new THREE.BoxGeometry(1.4, 12, 0.3), curtainMat);
-                cL.position.set(-1.7, -2, -0.8);
+                const cL = new THREE.Mesh(new THREE.BoxGeometry(2, 12, 0.3), curtainMat);
+                cL.position.set(-2, -2, -2);
                 this.scene.add(cL);
-                const cR = new THREE.Mesh(new THREE.BoxGeometry(1.4, 12, 0.3), curtainMat);
-                cR.position.set(1.7, -2, -0.8);
+                const cR = new THREE.Mesh(new THREE.BoxGeometry(2, 12, 0.3), curtainMat);
+                cR.position.set(2, -2, -2);
                 this.scene.add(cR);
+
+                this.renderer.localClippingEnabled = true;
 
                 // Tracking
                 container.addEventListener('mousemove', (e) => {
@@ -628,6 +648,25 @@
 
                 this.headGroup.rotation.y += (this.targetRot.y - this.headGroup.rotation.y) * 0.08;
                 this.headGroup.rotation.x += (this.targetRot.x - this.headGroup.rotation.x) * 0.08;
+
+                //update eye clippers
+
+                if (this.lidClipBase < 999 && this.lidClipNormalL) {
+                    const q = this.headGroup.getWorldQuaternion(new THREE.Quaternion());
+
+                    const nL = this.lidClipNormalL.clone().applyQuaternion(q);
+                    const nR = this.lidClipNormalR.clone().applyQuaternion(q);
+
+                    this.eyeL.lidClip.normal.copy(nL);
+                    this.eyeR.lidClip.normal.copy(nR);
+
+                    const eyeLWorld = this.eyeL.group.getWorldPosition(new THREE.Vector3());
+                    const eyeRWorld = this.eyeR.group.getWorldPosition(new THREE.Vector3());
+
+                    // constant = how far along the normal the plane sits, offset by lidClipBase
+                    this.eyeL.lidClip.constant = -nL.dot(eyeLWorld) + this.lidClipBase;
+                    this.eyeR.lidClip.constant = -nR.dot(eyeRWorld) + this.lidClipBase;
+                }
 
                 if (this.currentAnim === 'idle') {
                     this.avatarGroup.position.y = Math.sin(t * 1.5) * 0.04;
@@ -680,6 +719,16 @@
                 if (name === 'change_outfit_color') {
                     if (args.color && this.clothMat) this.clothMat.color.set(args.color);
                 }
+                if (name === 'set_hair_colour') {
+                    if (args.color && this.hairMat) {
+                        this.hairMat.color.set(args.color);
+                        this.browMat.color.copy(this.hairMat.color).lerp(new THREE.Color(0x000000), 0.3);
+                    }
+
+                }
+                if (name === "set_hair_style") {
+                    this.setHairStyles(args.styles);
+                }
                 if (name === 'set_clothing') this.set_clothing(args.items);
                 if (name === 'remove_clothing') this.remove_clothing(args.items);
             },
@@ -709,12 +758,26 @@
                 }
             },
 
+            setEyeClipAngle(angle) {
+                this.lidClipNormalL = new THREE.Vector3(Math.sin(-angle), -Math.cos(angle), 0).normalize();
+                this.lidClipNormalR = new THREE.Vector3(Math.sin(angle), -Math.cos(angle), 0).normalize();
+            },
             setExpression(expr) {
                 Object.values(this.mouthMeshes).forEach(m => m.visible = false);
                 this.blushL.material.opacity = 0;
                 this.blushR.material.opacity = 0;
                 this.eyeL.group.scale.set(1, 1, 1);
                 this.eyeR.group.scale.set(1, 1, 1);
+                this.eyeL.lidClip.normal.set(0, 0, 0);
+                this.eyeR.lidClip.normal.set(0, -1, 0);
+                this.lidClipBase = 999;
+                this.eyeL.lidClip.normal.set(0, -1, 0);
+                this.eyeR.lidClip.normal.set(0, -1, 0);
+                this.lidClipNormalL = null;
+                this.lidClipNormalR = null;
+
+                this.eyeL.group.rotation.z = 0;
+                this.eyeR.group.rotation.z = 0;
                 this.browL.rotation.z = 0;
                 this.browR.rotation.z = 0;
                 this.browL.position.y = 0.48;
@@ -728,15 +791,17 @@
                 switch (expr) {
                     case 'smug':
                         this.mouthMeshes.smirk.visible = true;
-                        this.browL.rotation.z = 0.3;
-                        this.browR.rotation.z = -0.3;
+                        this.browL.rotation.z = -0.3;
+                        this.browR.rotation.z = 0.3;
                         this.blushL.material.opacity = 0.3;
                         this.blushR.material.opacity = 0.3;
+                        this.lidClipBase = 0.06;
+                        this.setEyeClipAngle(0.2);
                         break;
                     case 'happy':
                         this.mouthMeshes.smile.visible = true;
-                        this.eyeL.group.scale.y = 0.1;
-                        this.eyeR.group.scale.y = 0.1;
+                        this.eyeL.group.scale.y = 0.3;
+                        this.eyeR.group.scale.y = 0.3;
                         this.blushL.material.opacity = 0.5;
                         this.blushR.material.opacity = 0.5;
                         this.browL.position.y = 0.52;
@@ -746,6 +811,9 @@
                         // Half-lidded eyes
                         this.eyeL.group.scale.y = 0.55;
                         this.eyeR.group.scale.y = 0.55;
+                        this.lidClipBase = 0.05;
+                        this.setEyeClipAngle(-0.1);
+
                         // Relaxed/droopy brows — slightly lowered
                         this.browL.position.y = 0.38;
                         this.browR.position.y = 0.38;
@@ -899,6 +967,24 @@
                 container.classList.toggle('collapsed');
             },
 
+            setHairStyles(styles) {
+                this.hairStyleGroup.clear();
+                for (const style of styles) {
+                    let group;
+                    switch (style) {
+                        case 'himeCut': group = this.buildHimeCut(); break;
+                        case 'buns': group = this.buildBuns(); break;
+                        case 'pixieCut': group = this.buildPixieCut(); break;
+                        case 'shortTwinTails': group = this.buildShortTwinTails(); break;
+                        case 'longTwinTails': group = this.buildLongTwinTails(); break;
+                        case 'mediumSideLocks': group = this.buildMediumSideLocks(); break;
+                        case 'shortSideLocks': group = this.buildShortSideLocks(); break;
+                        case 'longSideLocks': group = this.buildLongSideLocks(); break;
+                    }
+                    if (group) this.hairStyleGroup.add(group);
+                }
+            },
+
             poke() {
                 this.setExpression('surprised');
                 this.setAnimation('bounce', 0.6);
@@ -972,6 +1058,154 @@
                 hatGroup.position.set(0, 1.08, 0);
                 this.chefHatGroup = hatGroup;
                 return hatGroup;
+            },
+
+            buildHimeCut() {
+                const himeGroup = this.buildHairRot(4, -1.4)
+                return himeGroup;
+            },
+
+            buildShortTwinTails() {
+                const shortTwinTailsGroup = new THREE.Group();
+
+                for (let i = 0; i < 2; i++) {
+                    let lock = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.5, 0.35), this.hairMat);
+                    lock.position.set(i == 0 ? -1.3 : 1.3, -0.3, -0.1);
+                    shortTwinTailsGroup.add(lock);
+                    lock.rotation.z = i === 0 ? -0.15 : 0.15;
+
+                }
+
+                return shortTwinTailsGroup;
+            },
+
+            buildLongTwinTails() {
+                const longTwinTailsGroup = new THREE.Group();
+                let lockLength = 3.5;
+                let lockThickness = 0.45;
+                for (let i = 0; i < 2; i++) {
+                    let frontLock = new THREE.Mesh(new THREE.BoxGeometry(lockThickness, lockLength, lockThickness), this.hairMat);
+                    frontLock.position.set(i === 0 ? -1.4 : 1.4, -1.4, -0.1);
+                    frontLock.rotation.z = i === 0 ? -0.15 : 0.15;
+                    frontLock.rotation.x = -0.1;
+                    longTwinTailsGroup.add(frontLock);
+
+                    let rearLock = new THREE.Mesh(new THREE.BoxGeometry(lockThickness, lockLength, lockThickness), this.hairMat);
+                    rearLock.position.set(i === 0 ? -1.42 : 1.42, -1.1, -0.3);
+                    rearLock.rotation.z = i === 0 ? -0.2 : 0.2;
+                    rearLock.rotation.x = 0.1;
+                    longTwinTailsGroup.add(rearLock);
+                }
+
+                return longTwinTailsGroup;
+            },
+
+            buildMediumSideLocks() {
+                const group = new THREE.Group();
+                for (let i = 0; i < 2; i++) {
+                    const lock = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.5, 0.1), app.hairMat);
+                    lock.position.set(i === 0 ? -0.82 : 0.82, -0.1, 0.85);
+                    lock.rotation.x = -0.2;
+                    lock.rotation.z = i === 0 ? -0.1 : 0.1;
+                    group.add(lock);
+                }
+                return group;
+            },
+
+
+
+            buildShortSideLocks() {
+                const group = new THREE.Group();
+                for (let i = 0; i < 2; i++) {
+                    const lock = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.8, 0.1), app.hairMat);
+                    lock.position.set(i === 0 ? -0.82 : 0.82, 0.2, 0.85);
+                    lock.rotation.x = -0.2;
+                    lock.rotation.z = i === 0 ? -0.1 : 0.1;
+                    group.add(lock);
+                }
+                return group;
+            },
+
+            buildLongSideLocks() {
+                const group = new THREE.Group();
+                const bowMat = new THREE.MeshToonMaterial({ color: 0x111111 });
+
+                for (let i = 0; i < 2; i++) {
+                    const side = i === 0 ? -0.8 : 0.8;
+                    const totalLength = 2.5;
+
+                    const bowLength = 0.08
+                    const topLength = (totalLength * 0.8) - (bowLength / 2);
+                    const bottomLength = (totalLength * 0.2) - (bowLength / 2);
+
+                    const tail = new THREE.Group();
+
+                    // top segment
+                    const top = new THREE.Mesh(new THREE.BoxGeometry(0.3, topLength, 0.15), app.hairMat);
+                    tail.add(top);
+
+                    // bow
+                    const bow = new THREE.Mesh(new THREE.BoxGeometry(0.26, bowLength, 0.15), bowMat);
+                    bow.position.y = -(topLength / 2) - (bowLength / 2);
+                    tail.add(bow);
+
+                    // bottom segment
+                    const bottom = new THREE.Mesh(new THREE.BoxGeometry(0.3, bottomLength, 0.15), app.hairMat);
+                    bottom.position.y = (-(topLength / 2) - (bottomLength / 2)) - (bowLength);
+                    tail.add(bottom);
+
+
+                    tail.position.set(side, -0.35, 0.8);
+                    tail.rotation.x = -0.2;
+                    tail.rotation.z = i === 0 ? -0.1 : 0.1;
+
+                    group.add(tail);
+                }
+                return group;
+            },
+
+            buildBuns() {
+                const bunsGroup = new THREE.Group();
+
+                for (let i = 0; i < 2; i++) {
+                    let bun = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), this.hairMat);
+                    bun.position.set(i == 0 ? -1.08 : 1.08, 1.1, -0.7);
+                    bunsGroup.add(bun);
+
+                }
+
+                return bunsGroup;
+            },
+
+            buildPixieCut() {
+                const pixieGroup = this.buildHairRot(1.4, -0.3)
+                return pixieGroup;
+            },
+
+            buildHairRot(length, offset) {
+                let group = new THREE.Group();
+                const lockCount = 24;
+                const radius = 1.18;
+                const startAngle = Math.PI * 0.4; // left side
+                const endAngle = Math.PI * 1.6; // right side
+
+                for (let i = 0; i < lockCount; i++) {
+                    const t = i / (lockCount - 1);
+                    const angle = startAngle + t * (endAngle - startAngle);
+
+                    const x = Math.sin(angle) * radius;
+                    const z = Math.cos(angle) * radius;
+
+                    const lock = new THREE.Mesh(
+                        new THREE.BoxGeometry(0.22, length, 0.18),
+                        this.hairMat
+                    );
+                    lock.position.set(x, offset, z);
+                    lock.rotation.z = Math.sin(angle) * 0.16;
+                    group.add(lock);
+                }
+
+                return group;
             },
         };
 

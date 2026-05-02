@@ -180,9 +180,7 @@ class PuppeteerSession {
       ],
     );
 
-    BrowserContext context = await browser!.createIncognitoBrowserContext();
-
-    Page loadedPage = await context.newPage();
+    Page loadedPage = await browser!.newPage();
 
     await loadedPage.setViewport(DeviceViewport(width: viewportWidth, height: 900));
 

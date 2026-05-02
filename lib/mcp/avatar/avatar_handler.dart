@@ -64,6 +64,28 @@ class AvatarHandler {
     }
   }
 
+  void setHairStyle(List<AvatarHair> styles) async {
+    for (WebSocketChannel client in activeClients) {
+      client.sink.add(
+        jsonEncode({
+          "action": "set_hair_style",
+          "args": {"styles": styles.map((elem) => elem.name).toList()},
+        }),
+      );
+    }
+  }
+
+  void setHairColour(String colour) async {
+    for (WebSocketChannel client in activeClients) {
+      client.sink.add(
+        jsonEncode({
+          "action": "set_hair_colour",
+          "args": {"color": colour.startsWith("#") ? colour : "#$colour"},
+        }),
+      );
+    }
+  }
+
   void removeClothing(List<AvatarClothing> clothes) async {
     for (WebSocketChannel client in activeClients) {
       client.sink.add(

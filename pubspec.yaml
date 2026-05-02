@@ -1,6 +1,6 @@
 name: brat_mcp
 description: An MCP Server for Llama CPP.
-version: 1.0.7
+version: 1.0.8
 
 environment:
   sdk: ^3.11.5

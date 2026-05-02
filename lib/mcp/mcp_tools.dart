@@ -297,9 +297,10 @@ List<ConditionalMCPTool> conditionalTools = [
             MCPToolPropertyBool(
               name: 'headless',
               description:
-                  'Run browser in headless mode (default true). Set to false if you are being blocked or detected in headless mode.'
+                  'Run browser in headless mode (default true). Set to false if you are being blocked or detected in headless mode. e.g'
                   '\n This site can\'t be reached is likely due to headless'
-                  '\n ERR_HTTP2_PROTOCOL_ERROR is likely due to headless',
+                  '\n ERR_HTTP2_PROTOCOL_ERROR is likely due to headless'
+                  '\n Sorry, you have been blocked',
               required: false,
               defaultValue: true,
             ),
@@ -681,10 +682,10 @@ List<ConditionalMCPTool> conditionalTools = [
         'popup', 'modal', 'overlay', 'dialog', 'drawer', 'backdrop',
         'lightbox', 'banner', 'toast', 'tooltip', 'interstitial',
         // cookie/consent
-        'cookie', 'consent', 'gdpr', 'ccpa', 'privacy-banner',
+        'cookie', 'consent', 'gdpr', 'ccpa', 'privacy-banner', 
         // specific
         'croShadow', 'croPopup', 'cro-popup', 'cro-overlay',
-        'onetrust', 'cookiebanner', 'cookie-banner', 'cookie-notice',
+        'onetrust', 'cookiebanner', 'cookie-banner', 'cookie-notice', 'pie-cookie-banner',
         'fc-consent', 'fc-dialog', 'sp-message', 'qc-cmp',
         // common class patterns
         'notification', 'announcement', 'takeover', 'floater',

@@ -14,6 +14,8 @@ enum AvatarParticles { heart, anger, sweat, star, musicNote }
 
 enum AvatarClothing { chefHat }
 
+enum AvatarHair { himeCut, buns, pixieCut, shortTwinTails, longTwinTails, mediumSideLocks, shortSideLocks, longSideLocks }
+
 List<MCPTool> avatarTools = [
   MCPTool(
     name: 'avatar_set_expression',
@@ -145,6 +147,42 @@ List<MCPTool> avatarTools = [
       }
     },
   ),
+
+  MCPTool(
+    name: 'avatar_set_hair_style',
+    description: 'Set your hair style\n',
+    properties: [
+      MCPToolPropertyStringList(
+        name: "styles",
+        description:
+            "The styles to set they can be combined e.g longSideLocks and buns. available options: [${AvatarHair.values.map((expr) => expr.name).join(",")}]",
+        required: true,
+      ),
+    ],
+    execute: (props, args) async {
+      List<String> hairStrings = Utils().getList<String>(key: "styles", map: args, def: []);
+      List<AvatarHair> styles = [];
+      try {
+        for (String item in hairStrings) {
+          AvatarHair style = AvatarHair.values.byName(item);
+          styles.add(style);
+        }
+      } catch (e, stackTrace) {
+        //
+      }
+
+      try {
+        if (styles.isEmpty) {
+          return MCPResponse.text('Styles lsit is empty');
+        }
+
+        AvatarHandler.instance.setHairStyle(styles);
+        return MCPResponse.text('${styles.map((elem) => elem.name).join(", ")} set');
+      } catch (e, stackTrace) {
+        return MCPResponse.text('Failed to parse hair styles $e, $stackTrace');
+      }
+    },
+  ),
   MCPTool(
     name: 'avatar_remove_clothing',
     description: 'Remove pieces of clothing\n',
@@ -176,6 +214,25 @@ List<MCPTool> avatarTools = [
         return MCPResponse.text('${clothes.map((elem) => elem.name).join(", ")} set');
       } catch (e, stackTrace) {
         return MCPResponse.text('Failed to parse clothes $e, $stackTrace');
+      }
+    },
+  ),
+  MCPTool(
+    name: 'avatar_set_hair_colour',
+    description: 'Set the hair colour of your avatar\n',
+    properties: [MCPToolPropertyString(name: "colour", description: "The hair colour as a hex string e.g #ff0000", required: true)],
+    execute: (props, args) async {
+      String? color = args['colour'];
+
+      if (color == null || color.isEmpty) {
+        return MCPResponse.text('No color provided');
+      }
+
+      try {
+        AvatarHandler.instance.setHairColour(color);
+        return MCPResponse.text('Hair colour set to $color');
+      } catch (e, stackTrace) {
+        return MCPResponse.text('Failed to set hair colour $e, $stackTrace');
       }
     },
   ),
